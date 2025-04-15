@@ -1,0 +1,22 @@
+model:
+  n_layers: 12
+  input_dims:
+    X: 10
+    E: 10
+    y: 10
+  output_dims:
+    X: 10
+    E: 10
+    y: 10
+  hidden_mlp_dims:
+    X: 10
+    E: 10
+    y: 10
+  hidden_dims:
+    n_head: 4
+    dim_ffX: 16
+    dim_ffE: 16
+    dim_ffy: 16
+    dx: 16
+    de: 16
+    dy: 16

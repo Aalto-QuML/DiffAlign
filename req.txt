@@ -1,0 +1,8 @@
+python==3.10
+torch==2.2.0
+numpy==1.8.0
+torch_scatter -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
+torch_sparse -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
+torch_cluster -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
+torch_geometric
+hydra-core

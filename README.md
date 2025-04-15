@@ -15,9 +15,9 @@
     - make sure you install the right torch/torch_geometric and their dependencies for your platform. More information on [torch](https://pytorch.org/get-started/locally/), [torch_geometric](https://pytorch-geometric.readthedocs.io/en/2.5.2/notes/installation.html)
 
 <details>
-<summary>Collapsible</summary>
+<summary>## Installing on Lumi</summary>
 
-Your content goes here. This can include text, code, images, or any markdown elements.
+It is [recommended]() to use containers on Lumi. 
 
 </details>
 
