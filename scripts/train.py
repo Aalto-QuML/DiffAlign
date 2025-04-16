@@ -1,7 +1,7 @@
 import hydra
 import torch.nn as nn
 import torch
-from diffalign.graph_transformer import GraphTransformer
+from diffalign.graph_transformer_old import GraphTransformer
 
 @hydra.main(config_path='../configs', config_name='default.yaml')
 def train(cfg):

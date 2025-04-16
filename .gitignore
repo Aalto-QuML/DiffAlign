@@ -6,3 +6,5 @@ outputs/
 experiments/
 diffalign.egg-info/
 .vscode/
+poster/
+notebooks/
