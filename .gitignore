@@ -1,0 +1,10 @@
+data/
+__DS_Store
+*.DS_Store
+__pycache__/
+outputs/
+experiments/
+diffalign.egg-info/
+.vscode/
+poster/
+notebooks/
