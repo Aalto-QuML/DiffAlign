@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Load MathJax from CDN -->
+  <meta charset="utf-8">
+  <!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
+  <!-- Replace the content tag with appropriate information -->
+  <meta name="description" content="Presenting the paper Equivariant Denoisers Cannot Copy Graphs: Align your Graph Diffusion Models">
+  <meta property="og:title" content="Equivariant Denoisers Cannot Copy Graphs: Align your Graph Diffusion Models"/>
+  <meta property="og:description" content="Equivariant Denoisers Cannot Copy Graphs: Align your Graph Diffusion Models"/>
+  <meta property="og:url" content="https://aalto-quml.github.io/DiffAlign"/>
+  <!-- Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X630-->
+  <meta property="og:image" content="static/image/rainbow.svg" />
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+
+
+  <meta name="twitter:title" content="TWITTER BANNER TITLE META TAG">
+  <meta name="twitter:description" content="TWITTER BANNER DESCRIPTION META TAG">
+  <!-- Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X600-->
+  <meta name="twitter:image" content="static/images/your_twitter_banner_image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <!-- Keywords for your paper to be indexed by-->
+  <meta name="keywords" content="KEYWORDS SHOULD BE PLACED HERE">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+  <title>DiffAlign</title>
+  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+  rel="stylesheet">
+
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+  href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script src="static/js/bulma-carousel.min.js"></script>
+  <script src="static/js/bulma-slider.min.js"></script>
+  <script src="static/js/index.js"></script>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
+  </script>
+  <script type="text/javascript"
+    src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+  </script>
+    <!-- Existing meta tags and links -->
+  
+    <link rel="stylesheet" href="static/css/index.css">
+  
+    <!-- Add your custom CSS here -->
+    <style>
+      .image-container {
+        display: flex;
+        justify-content: center;
+      }
+      
+      .publication-title {
+        text-align: center;
+        margin-bottom: 0;
+      }
+    </style>
+  
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+<body>
+
+
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">
+              Equivariant Denoisers Cannot Copy Graphs: Align your Graph Diffusion Models
+            </h1>
+            <div class="image-container">
+              <img src="static/images/rainbow.svg" alt="DiffAlign Logo" style="width: 400px; max-width: 100%; margin: 0 0;">
+            </div>
+            <div class="is-size-5 publication-authors">
+              <!-- Paper authors -->
+              <span class="author-block">
+                <a href="FIRST AUTHOR PERSONAL LINK" target="_blank">Najwa Laabid</a><sup>*1</sup>,</span>
+                <span class="author-block">
+                  <a href="SECOND AUTHOR PERSONAL LINK" target="_blank">Severi Rissanen</a><sup>*1</sup>,</span>
+                  <span class="author-block">
+                    <a href="FOURTH AUTHOR PERSONAL LINK" target="_blank">Markus Heinonen</a><sup>1</sup>
+                  </span>
+                  <span class="author-block">
+                    <a href="THIRD AUTHOR PERSONAL LINK" target="_blank">Arno Solin</a><sup>1</sup>
+                  </span>
+                  <span class="author-block">
+                    <a href="FIFTH AUTHOR PERSONAL LINK" target="_blank">Vikas Garg</a><sup>1,2</sup>
+                  </span>
+                  </div>
+
+                  <div class="is-size-5 publication-authors">
+                    <span class="author-block">Aalto University<sup>1</sup>, YaiYai Ltd<sup>2</sup><br>International Conference on Learning Representations (ICLR) 2025</span>
+                    <span class="eql-cntrb"><small><br><sup>*</sup>Indicates Equal Contribution</small></span>
+                  </div>
+
+                  <div class="column has-text-centered">
+                    <div class="publication-links">
+                         <!-- Arxiv PDF link -->
+                      <span class="link-block">
+                        <a href="https://arxiv.org/pdf/<ARXIV PAPER ID>.pdf" target="_blank"
+                        class="external-link button is-normal is-rounded is-dark">
+                        <span class="icon">
+                          <i class="fas fa-file-pdf"></i>
+                        </span>
+                        <span>Paper</span>
+                      </a>
+                    </span>
+
+                    <!-- Supplementary PDF link -->
+                    <!-- <span class="link-block">
+                      <a href="static/pdfs/supplementary_material.pdf" target="_blank"
+                      class="external-link button is-normal is-rounded is-dark">
+                      <span class="icon">
+                        <i class="fas fa-file-pdf"></i>
+                      </span>
+                      <span>Supplementary</span>
+                    </a>
+                  </span> -->
+
+                  <!-- Github link -->
+                  <span class="link-block">
+                    <a href="https://github.com/Aalto-QuML/DiffAlign.git" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+                
+                <span class="link-block">
+                  <a href="static/pdfs/DiffAlign_poster.pdf" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="fab fa-github"></i>
+                  </span>
+                  <span>Poster</span>
+                  </a>
+                </span>
+
+                <!-- <span class="link-block">
+                  <a href="https://najwalaabid.github.io/blog/2025/03/25/DiffAlign.html" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="fab fa-blog"></i>
+                    <i class="fas fa-blog"></i>
+                  </span>
+                  <span>Blog Post</span>
+                  </a>
+                </span> -->
+
+                <!-- ArXiv abstract Link -->
+                <span class="link-block">
+                  <a href="https://arxiv.org/abs/2503.05991" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
+                </a>
+                <!-- ArXiv abstract Link -->
+                <!-- <span class="link-block">
+                  <a href="https://arxiv.org/abs/<ARXIV PAPER ID>" target="_blank"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
+                </a>
+              </span> -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div class="container is-max-desktop">
+  <div class="hero-body">
+      <img src="static/images/overview.svg" alt="An overview of our method">
+      <h2 class="subtitle has-text-centered">
+        We use node identifiers to <emph>align</emph> source and target graphs, thus breaking the self-symmetries in the input space while preserving permutation equivariance in non-matching graph portions.
+      </h2>
+  </div>
+</div>
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Graph diffusion models, dominant in graph generative modeling, remain underexplored for graph-to-graph translation tasks like chemical reaction prediction. 
+            We demonstrate that standard permutation equivariant denoisers face fundamental limitations in these tasks due to their inability to break symmetries in noisy inputs. 
+            To address this, we propose <emph>aligning</emph> input and target graphs to break input symmetries while preserving permutation equivariance in non-matching graph portions. 
+            Using retrosynthesis (i.e., the task of predicting precursors for synthesis of a given target molecule) as our application domain, we show how alignment dramatically 
+            improves discrete diffusion model performance from $5\%$ to a SOTA-matching 
+            $54.7\%$ top-1 accuracy. 
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+<!-- Paper abstract -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Background</h2>
+        <div class="content has-text-justified">
+          <p>
+            TODO: define graphs + diffusion model.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+<!-- Equivariance and Self-Symmetry -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Equivariance and Self-Symmetry</h2>
+        <div class="content has-text-justified">
+          <p>It has been noted in the literature [CITE] that permutation equivariant functions struggle to map between a self-symmetrical 
+            input space to a less self-symmetrical output space. To confirm this observation, we train two models to translate a ring molecular structure into 
+            a less-self symmetrical structure. The first model is an equivariant GNN (GraphTransformer) 
+            and the second is a non-equivariant GNN (MPNN, achieved by adding unique positional encodings to the input features of each node).
+            We share the samples generated by the two models below and you can run the models yourself in this <a href="https://github.com/Aalto-QuML/DiffAlign.git" target="_blank">notebook</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Equivariance and Self-Symmetry -->
+
+<!-- What this means for Diffusion Models  -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">What this means for Diffusion Models</h2>
+        <div class="content has-text-justified">
+          <p>Diffusion models are expected to transform a noisy input into a clean output by iteratively removing noise from the input. 
+            However, if the input is self-symmetrical, the model will struggle to produce a non-symmetrical output. 
+            To showcase this effect, we design a simple experiment where the goal is to copy a graph structure. 
+            In a single diffusion step, the effect we get is the same as noticed in the previous section.
+            However, if we run the diffusion process for more steps, the model will start to produce more and more different outputs. 
+            It can even recover the source graph eventually.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End What this means for Diffusion Models -->
+
+<!-- What this means for Diffusion Models  -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">What happens, mathematically?</h2>
+        <div class="content has-text-justified">
+          <p>It turns out that the equivariant denoiser, in an attempt to balance the requirement to break symmetries while maintaining equivariance, 
+            will eventually learn a distribution equal to the marginal distribution of the input labels.
+
+            Formally, we write... (or refer to the paper for the theorem + proof?)
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End What this means for Diffusion Models -->
+
+<!-- What this means for Diffusion Models  -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Solution: Aligned Equivariance</h2>
+        <div class="content has-text-justified">
+          <p> So how can we help the model break self-symmetries while maintaining equivariance? 
+            We can use node identifiers to <emph>match</emph> the source and target graphs! Assume you have a source graph $G$ and a target graph $G'$.
+            If you know some connection between the nodes of $G$ and $G'$, you can use that to <emph>align</emph> the two graphs. 
+            For instance, if the graphs represent two configurations of the same graph (e.g. evolution of a graph over time), 
+            you can assume that a portion of the nodes in the graph remain intact while the rest are rearranged/added/removed.
+            In retrosynthesis, we can identify where nodes in the source graph (products) are in the target graph (reactants) through <emph>atom-mappping</emph>.
+            We can then tell the denoiser somehow which nodes are paired through atom-mapping. We will see in the following section how we can do this.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End What this means for Diffusion Models -->
+
+<!-- Ensure alignment is done correctly -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">How to ensure alignment?</h2>
+        <div class="content has-text-justified">
+          <p>
+          How can we tell a denoiser that specific nodes are paired? We explore three different methods:
+
+          Note that the methods can be combined to strengthen the alignment signal.
+          We show that aligned equivariant denoiser remain equivariant to the non-paired nodes in the generated graph.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Ensure alignment is done correctly -->
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Results on retrosynthesis</h2>
+        <div class="content has-text-justified">
+          <p>
+            We show that our method achieves a SOTA-matching 
+            $54.7\%$ top-1 accuracy, compared to a $5\%$ accuracy without alignment.
+
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">What's next? (downstream applications)</h2>
+        <div class="content has-text-justified">
+          <p>
+            Inpainting + inference guidance.
+            Other features of diffusion: distillation, etc.
+            
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <h2 class="title">BibTeX</h2>
+      <pre><code>@proceedings{DiffAlign2025Laabid,
+              title={Equivariant Denoisers Cannot Copy Graphs: Align your Graph Diffusion Models},
+              author={Laabid, Najwa and Rissanen, Severi and Heinonen, Markus and Solin, Arno and Garg, Vikas},
+              booktitle={International Conference on Learning Representations (ICLR)},
+              year={2025},
+              url={https://openreview.net/forum?id=onIro14tHv}}</code></pre>
+    </div>
+</section>
+<!--End BibTex citation -->
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            You are free to borrow the source code of this website, we just ask that you link back to this page in the footer. <br> This website is licensed under a <a rel="license"  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Statcounter tracking code -->
+  
+<!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+  </body>
+  </html>
