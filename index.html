@@ -44,9 +44,149 @@
   <script src="static/js/bulma-carousel.min.js"></script>
   <script src="static/js/bulma-slider.min.js"></script>
   <script src="static/js/index.js"></script>
-  <script type="text/x-mathjax-config">
-    MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});
-  </script>
+<!-- MathJax v2 configuration -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [['$','$'], ['\\(','\\)']],
+      processEscapes: true
+    },
+    TeX: {
+      equationNumbers: { autoNumber: "AMS" },
+      extensions: ["AMSmath.js", "AMSsymbols.js", "noErrors.js", "noUndefined.js"],
+      Macros: {
+        // Bold Greek symbols
+        valpha: ["\\boldsymbol{\\alpha}"],
+        vbeta: ["\\boldsymbol{\\beta}"],
+        vsigma: ["\\boldsymbol{\\sigma}"],
+        vchi: ["\\boldsymbol{\\chi}"],
+        vepsilon: ["\\boldsymbol{\\varepsilon}"],
+        veta: ["\\boldsymbol{\\eta}"],
+        vmu: ["\\boldsymbol{\\mu}"],
+        vomega: ["\\boldsymbol{\\omega}"],
+        vxi: ["\\boldsymbol{\\xi}"],
+        vphi: ["\\boldsymbol{\\phi}"],
+        vtheta: ["\\boldsymbol{\\theta}"],
+        vTheta: ["\\boldsymbol{\\Theta}"],
+        vzeta: ["\\boldsymbol{\\zeta}"],
+        MPsi: ["\\boldsymbol{\\Psi}"],
+        MPhi: ["\\boldsymbol{\\Phi}"],
+        MSigma: ["\\boldsymbol{\\Sigma}"],
+        MTheta: ["\\boldsymbol{\\Theta}"],
+        invchisq: ["\\mathrm{Inv\\text{-}}\\chi^2"],
+        mid: ["\\,|\\,"],
+        imag: ["\\mathrm{i}"],
+        // Vectors and matrices
+        x: ["\\mathbf{x}"],
+        y: ["\\mathbf{y}"],
+        G: ["\\mathbf{G}"],
+        Q: ["\\mathbf{Q}"],
+        R: ["\\mathbf{R}"],
+        bR: ["\\mathbb{R}"],
+        e: ["\\mathbf{e}"],
+        X: ["\\mathbf{X}"],
+        H: ["\\mathbf{H}"],
+        h: ["\\mathbf{h}"],
+        Y: ["\\mathbf{Y}"],
+        E: ["\\mathbf{E}"],
+        P: ["\\mathbf{P}"],
+        p: ["\\mathbf{p}"],
+        N: ["\\mathcal{N}"],
+        U: ["\\mathbf{U}"],
+        enc: ["\\boldsymbol{\\varphi}"],
+        // Big roman symbols
+        RL: ["\\mathrm{L}"],
+        RM: ["\\mathrm{M}"],
+        RQ: ["\\mathrm{Q}"],
+        RS: ["\\mathrm{S}"],
+        RU: ["\\mathrm{U}"],
+        // Roman symbols
+        rb: ["\\mathrm{b}"],
+        rc: ["\\mathrm{c}"],
+        rrm: ["\\mathrm{m}"],
+        ro: ["\\mathrm{o}"],
+        rs: ["\\mathrm{s}"],
+        rrq: ["\\mathrm{q}"],
+        // Vectors with mathbf
+        va: ["\\mathbf{a}"],
+        vb: ["\\mathbf{b}"],
+        vc: ["\\mathbf{c}"],
+        vd: ["\\mathbf{d}"],
+        ve: ["\\mathbf{e}"],
+        vf: ["\\mathbf{f}"],
+        vg: ["\\mathbf{g}"],
+        vh: ["\\mathbf{h}"],
+        vi: ["\\mathbf{i}"],
+        vj: ["\\mathbf{j}"],
+        vk: ["\\mathbf{k}"],
+        vl: ["\\mathbf{l}"],
+        vm: ["\\mathbf{m}"],
+        vn: ["\\mathbf{n}"],
+        vo: ["\\mathbf{o}"],
+        vp: ["\\mathbf{p}"],
+        vq: ["\\mathbf{q}"],
+        vr: ["\\mathbf{r}"],
+        vs: ["\\mathbf{s}"],
+        vu: ["\\mathbf{u}"],
+        vv: ["\\mathbf{v}"],
+        vw: ["\\mathbf{w}"],
+        vx: ["\\mathbf{x}"],
+        vy: ["\\mathbf{y}"],
+        vz: ["\\mathbf{z}"],
+        // Matrices with mathbf
+        MA: ["\\mathbf{A}"],
+        MB: ["\\mathbf{B}"],
+        MC: ["\\mathbf{C}"],
+        MD: ["\\mathbf{D}"],
+        MF: ["\\mathbf{F}"],
+        MG: ["\\mathbf{G}"],
+        MH: ["\\mathbf{H}"],
+        MI: ["\\mathbf{I}"],
+        MJ: ["\\mathbf{J}"],
+        MK: ["\\mathbf{K}"],
+        ML: ["\\mathbf{L}"],
+        MM: ["\\mathbf{M}"],
+        MP: ["\\mathbf{P}"],
+        MQ: ["\\mathbf{Q}"],
+        MR: ["\\mathbf{R}"],
+        MS: ["\\mathbf{S}"],
+        MT: ["\\mathbf{T}"],
+        MV: ["\\mathbf{V}"],
+        MW: ["\\mathbf{W}"],
+        MX: ["\\mathbf{X}"],
+        MY: ["\\mathbf{Y}"],
+        // Random matrices with boldsymbol
+        mA: ["\\boldsymbol{A}"],
+        mB: ["\\boldsymbol{B}"],
+        mC: ["\\boldsymbol{C}"],
+        mD: ["\\boldsymbol{D}"],
+        mE: ["\\boldsymbol{E}"],
+        mF: ["\\boldsymbol{F}"],
+        mG: ["\\boldsymbol{G}"],
+        mH: ["\\boldsymbol{H}"],
+        mI: ["\\boldsymbol{I}"],
+        mJ: ["\\boldsymbol{J}"],
+        mK: ["\\boldsymbol{K}"],
+        mL: ["\\boldsymbol{L}"],
+        mM: ["\\boldsymbol{M}"],
+        mN: ["\\boldsymbol{N}"],
+        mO: ["\\boldsymbol{O}"],
+        mP: ["\\boldsymbol{P}"],
+        mQ: ["\\boldsymbol{Q}"],
+        mR: ["\\boldsymbol{R}"],
+        mS: ["\\boldsymbol{S}"],
+        mT: ["\\boldsymbol{T}"],
+        mU: ["\\boldsymbol{U}"],
+        mV: ["\\boldsymbol{V}"],
+        mW: ["\\boldsymbol{W}"],
+        mX: ["\\boldsymbol{X}"],
+        mY: ["\\boldsymbol{Y}"],
+        mZ: ["\\boldsymbol{Z}"]
+      }
+    }
+  });
+</script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS_HTML"></script>
   <script type="text/javascript"
     src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
   </script>
@@ -109,7 +249,7 @@
                     <div class="publication-links">
                          <!-- Arxiv PDF link -->
                       <span class="link-block">
-                        <a href="https://arxiv.org/pdf/<ARXIV PAPER ID>.pdf" target="_blank"
+                        <a href="https://openreview.net/forum?id=onIro14tHv" target="_blank"
                         class="external-link button is-normal is-rounded is-dark">
                         <span class="icon">
                           <i class="fas fa-file-pdf"></i>
@@ -228,7 +368,31 @@
         <h2 class="title is-3">Background</h2>
         <div class="content has-text-justified">
           <p>
-            TODO: define graphs + diffusion model.
+            Consider a database of $N_\mathrm{obs}$ graphs 
+            $\mathcal{D} = \{ (\X_n, \Y_n, \P^{\Y\to\X}_n) \}_{n=1}^{N_\mathrm{obs}}$, where $\X_n$ represents the target graph, 
+            $\Y_n$ the input graph, and $\P^{\Y\to\X}_n$ are matrices defining <em>node mappings</em> between the two graphs.
+             The <em>graph translation</em> task is: given that the data is sampled from an unknown distribution 
+             $p(\X,\Y,\P^{\Y\to\X})$, predict valid targets $\X \sim p(\X\mid\Y)$ for a given input $\Y$. 
+             We define the general diffusion process via a forward process
+             \begin{equation}\textstyle
+                \label{eq:forward-graph-diffusion}
+                q(\X_{t+1} \mid \X_t) = \prod^{N_X}_{i=1} q(\X^{\N,i}_{t+1} \mid \X^{\N,i}_t) \prod_{i,j=1}^{N_X} q(\X^{E,ij}_{t+1} \mid \X^{E,ij}_t),
+                \end{equation}
+                to diffuse the reactant to noise, and a reverse process
+                \begin{equation}\textstyle
+                \label{eq:diff-backward}
+                    p_{\theta}(\X_{t-1} \mid \X_t, \Y) = \prod_{i=1}^{N_X} p_{\theta}(\X^{\N,i}_{t-1} \mid \X_t, \Y) \prod_{i,j}^{N_X} p_{\theta}(\X^{E,ij}_{t-1} \mid \X_t, \Y),
+                \end{equation}
+            defining our generative model. we use the neural network specifically to predict ground truth labels from noised samples, 
+            meaning that the neural network outputs a distribution $\tilde p_{\theta}\big(\X_0  \mid \X_t, \Y\big)$.
+            The reverse process is then parameterized by \looseness-1
+            \begin{equation}\textstyle
+            \label{eq:conditional-node-backward}
+                p_{\theta}(\X_{t-1} \mid \X_t, \Y) 
+                = \sum_{\X_0} q\big(\X_{t-1} \mid \X_t, \X_0 \big) \tilde p_{\theta}\big(\X_0  \mid \X_t, \Y\big).
+            \end{equation}
+            It is common [CITE] to choose $p_{\theta}\big(\X_0  \mid \X_t, \Y\big)$ as an equivariant model. 
+            Next we show how this limits the performance of the model.
           </p>
         </div>
       </div>
@@ -312,6 +476,9 @@
             In retrosynthesis, we can identify where nodes in the source graph (products) are in the target graph (reactants) through <emph>atom-mappping</emph>.
             We can then tell the denoiser somehow which nodes are paired through atom-mapping. We will see in the following section how we can do this.
           </p>
+          <div style="text-align: center;">
+            <img src="static/images/alignment_comparing_optimal_am.svg" alt="Equivariance and Self-Symmetry">
+          </div>
         </div>
       </div>
     </div>
@@ -332,6 +499,9 @@
           Note that the methods can be combined to strengthen the alignment signal.
           We show that aligned equivariant denoiser remain equivariant to the non-paired nodes in the generated graph.
           </p>
+          <div style="text-align: center;">
+            <img src="static/images/alignment_methods.svg" alt="Alignment methods">
+          </div>
         </div>
       </div>
     </div>
@@ -348,8 +518,26 @@
           <p>
             We show that our method achieves a SOTA-matching 
             $54.7\%$ top-1 accuracy, compared to a $5\%$ accuracy without alignment.
-
+            $$
+            \begin{array}{l}
+            \begin{array}{c}
+            \end{array} \\
+            \begin{array}{lcccccc}
+            \hline
+            \textbf{Method} & \mathbf{k=1} \uparrow & \mathbf{k=3} \uparrow & \mathbf{k=5} \uparrow & \mathbf{k=10} \uparrow & \widehat{\mathrm{\textbf{MRR}}} \uparrow \\
+            \hline
+            \text{Unaligned} & 4.1 & 6.5 & 7.8 & 9.8 & 0.056 \\
+            \text{DiffAlign-input} & 44.1 & 65.9 & 72.2 & 78.7 & 0.554 \\
+            \text{DiffAlign-PE} & 49.0 & 70.7 & 76.6 & \mathbf{81.8} & 0.601 \\
+            \text{DiffAlign-PE+skip} & \mathbf{54.7} & \mathbf{73.3} & \mathbf{77.8} & 81.1 & \mathbf{0.639} \\
+            \hline
+            \end{array}
+            \end{array}
+            $$
           </p>
+          <div style="text-align: center;">
+            <img src="static/images/sampling_steps.svg" alt="Sampling steps">
+          </div>
         </div>
       </div>
     </div>
@@ -363,10 +551,21 @@
         <h2 class="title is-3">What's next? (downstream applications)</h2>
         <div class="content has-text-justified">
           <p>
-            Inpainting + inference guidance.
-            Other features of diffusion: distillation, etc.
-            
+            Unlocking the potential of diffusion models in graph-to-graph translation enables a range of downstream applications.
+            We show how these applications can benefit our main target application: retrosynthesis.
+            Thanks to <em>inference guidance</em>, we can use our denoiser to generate reactants with desired properties, e.g. synthesizability.
+            This is especially useful for mutli-step retrosynthesis where the output of a single-step model is chained through a search until reaching available
+            starting materials.
           </p>
+          <div style="text-align: center;">
+            <img src="static/images/guidance.svg" alt="Atom guidance">
+          </div>
+          <p>
+            We can also apply <em>inpainting</em> to generate one of the reactants conditional on the other reactants and the product.
+          </p>
+          <div style="text-align: center;">
+            <img src="static/images/inpainting_full.svg" alt="Inpainting">
+          </div>
         </div>
       </div>
     </div>

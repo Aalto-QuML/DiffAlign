@@ -1,0 +1,185 @@
+\documentclass[tikz,border=10pt]{standalone}
+
+% Essential packages for TikZ
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{pgfplots}
+\usepackage{calc}
+
+% Additional TikZ libraries that might be needed
+\usetikzlibrary{positioning,calc,arrows.meta}
+
+% Define the \scalebox command if not using the graphicx package already
+\usepackage{graphics}
+
+% Document begins
+\begin{document}
+
+\newlength{\figurewidth}
+\newlength{\figureheight}
+\setlength{\figurewidth}{10cm}  % Set width to 10cm
+\setlength{\figureheight}{7cm}  % Set height to 7cm
+
+\begin{tikzpicture}
+
+    \definecolor{darkgray176}{RGB}{176,176,176}
+    \definecolor{darkkhaki200183101}{RGB}{200,183,101}
+    \definecolor{darkslategray5369108}{RGB}{53,69,108}
+    \definecolor{dimgray102105112}{RGB}{102,105,112}
+    \definecolor{gray148142119}{RGB}{148,142,119}
+    
+    \begin{axis}[
+    scale only axis,
+    width=\figurewidth,
+    height=\figureheight,
+    legend cell align={left},
+    legend style={inner xsep=1pt, inner ysep=0.5pt, nodes={inner sep=1pt, text depth=0.1em},draw=black!50,fill=white,font=\scriptsize,at={(0.03,0.97)},anchor=north west},
+    %legend style={
+    %  fill opacity=0.0,
+    %  draw opacity=1,
+    %  text opacity=1,
+    %  at={(0.03,0.35)},
+    %  anchor=north west,
+    %  draw=none
+    %},
+    log basis x={10},
+    tick align=outside,
+    tick pos=left,
+    grid=major,
+    x grid style={darkgray176,dashed},
+    xlabel={Sampling step count},
+    xmin=0.794328234724281, xmax=125.892541179417,
+    xmode=log,
+    xtick style={color=black},
+    xtick={1,2,5,10,20,50,100},
+    ytick={0,.2,.4,.6,.8,1},
+    yticklabels={0\%,20\%,40\%,60\%,80\%,100\%},
+    xticklabels={1,2,5,10,20,50,100},
+    y grid style={darkgray176,dashed},
+    ylabel={Top-$k$},
+    ymin=-0.04326171875, ymax=1.04326171875,
+    ytick style={color=black}
+    ]
+    % Add dummy plots for the sake of the legend if they don't exist
+    \addplot [black, solid, very thick] coordinates {(1,0) (1,0)}; % Aligned model (adjust coordinates to be off the plot area if needed)
+    \addlegendentry{Aligned model};
+    \addplot [black, semithick] coordinates {(1,0) (1,0)}; % Permutation equivariant model (adjust as above)
+    \addlegendentry{Permutation equivariant model};
+    \addplot [very thick, darkslategray5369108, forget plot]
+    table {%
+    1 0.03125
+    2 0.3203125
+    5 0.466796875
+    10 0.486328125
+    50 0.486328125
+    100 0.501953125
+    };
+    \addplot [very thick, dimgray102105112, forget plot]
+    table {%
+    1 0.0546875
+    2 0.431640625
+    5 0.615234375
+    10 0.673828125
+    50 0.701171875
+    100 0.71484375
+    };
+    \addplot [very thick, gray148142119, forget plot]
+    table {%
+    1 0.08984375
+    2 0.486328125
+    5 0.642578125
+    10 0.724609375
+    50 0.755859375
+    100 0.77734375
+    };
+    \addplot [very thick, darkkhaki200183101, forget plot]
+    table {%
+    1 0.25390625
+    2 0.599609375
+    5 0.767578125
+    10 0.81640625
+    50 0.86328125
+    100 0.865234375
+    };
+    \addplot [semithick, darkslategray5369108, forget plot]
+    table {%
+    1 0
+    2 0
+    5 0
+    10 0
+    20 0.00390625
+    50 0.037109375
+    100 0.05078
+    };
+    \addplot [semithick, dimgray102105112, forget plot]
+    table {%
+    1 0
+    2 0
+    5 0
+    10 0.00390625
+    20 0.017578125
+    50 0.05859375
+    100 0.07226
+    };
+    \addplot [semithick, gray148142119, forget plot]
+    table {%
+    1 0
+    2 0
+    5 0
+    10 0.009765625
+    20 0.025390625
+    50 0.068359375
+    100 0.07812
+    };
+    \addplot [semithick, darkkhaki200183101, forget plot]
+    table {%
+    1 0
+    2 0
+    5 0.001953125
+    10 0.01953125
+    20 0.064453125
+    50 0.142578125
+    100 0.1562
+    };
+    \draw (axis cs:10,0.48) node[
+      fill=white,
+      rounded corners=1pt,
+      scale=0.55,
+      anchor=base west,
+      draw=darkslategray5369108,
+      text=darkslategray5369108,
+      rotate=0.0
+    ]{top-1};
+    \draw (axis cs:10,0.65) node[
+      fill=white,
+      rounded corners=1pt,
+      scale=0.55,
+      anchor=base west,
+      draw=dimgray102105112,
+      text=dimgray102105112,
+      rotate=0.0
+    ]{top-3};
+    \draw (axis cs:10,0.72) node[
+      fill=white,
+      rounded corners=1pt,
+      scale=0.55,
+      anchor=base west,
+      draw=gray148142119,
+      text=gray148142119,
+      rotate=0.0
+    ]{top-5};
+    \draw (axis cs:10,0.8) node[
+      fill=white,
+      rounded corners=1pt,
+      scale=0.55,
+      anchor=base west,
+      draw=darkkhaki200183101,
+      text=darkkhaki200183101,
+      rotate=0.0
+    ]{top-100};
+    \end{axis}
+    
+\end{tikzpicture}
+
+\end{document}
