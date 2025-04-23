@@ -17,18 +17,17 @@
 
 \begin{tikzpicture}
     % Styles
-    \tikzstyle{label}=[font=\scriptsize]  
     \tikzstyle{arr}=[->,-latex,line width=1pt]  
     % The background image    
     \node[anchor=south west,inner sep=0] (image) at (0,0)
       {\includegraphics[width=\columnwidth]{fig/inpainting}};
 
     \begin{scope}[x={(image.south east)},y={(image.north west)}]
-      \node[label] at (.16,1.02) {\textbf{Product}};
+      \node at (.16,1.02) {\textbf{Product}};
 
-    \node[label] at (.70,1.02) {\textbf{Generate one reactant conditional on another}};
+    \node at (.70,1.02) {\textbf{Generate one reactant conditional on another}};
 
-    \node[label] at (.70,0.56) {\textbf{Generate conditional on desired substructure}};
+    \node at (.70,0.56) {\textbf{Generate conditional on desired substructure}};
 
     \end{scope}
       
