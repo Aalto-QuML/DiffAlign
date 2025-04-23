@@ -5,3 +5,7 @@ _DS_Store
 *.log
 *.aux
 *.gz
+data/
+notebooks/data/
+.vs_code
+outputs
