@@ -186,6 +186,7 @@
     }
   });
 </script>
+
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS_HTML"></script>
   <script type="text/javascript"
     src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
@@ -196,16 +197,167 @@
   
     <!-- Add your custom CSS here -->
     <style>
-      .image-container {
+      .content {
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .has-text-justified {
+        text-align: justify;
+      }
+      .input-output-images {
         display: flex;
         justify-content: center;
+        gap: 20px;
+        margin: 20px 0;
       }
-      
-      .publication-title {
+      .molecule-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+      }
+      .molecule-caption {
+        font-size: 14px;
+        font-weight: bold;
+        margin-bottom: 5px;
         text-align: center;
-        margin-bottom: 0;
       }
-    </style>
+      .input-output-images img {
+        max-width: 100%;
+        height: auto;
+      }
+      .image-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .image-grid-with-labels {
+        position: relative;
+        margin: 40px 0 20px 40px; /* Added left margin for the rotated labels */
+      }
+      .image-grid-content {
+        display: flex;
+      }
+      /* Samples label at the top */
+      .samples-label {
+        font-weight: bold;
+        position: absolute;
+        top: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 16px;
+        color: #333;
+      }
+      /* Container for row labels on the left */
+      .row-labels {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        margin-right: 10px;
+        position: absolute;
+        left: -150px; /* Move labels further left */
+        top: 30px;
+        height: 100%;
+      }
+      /* Individual row label, rotated 90 degrees */
+      .row-label {
+        font-weight: bold;
+        transform: rotate(-90deg);
+        transform-origin: center right;
+        white-space: nowrap;
+        color: #333;
+        font-size: 16px;
+        position: relative;
+        height: 30px; /* Fixed height for positioning */
+        margin-bottom: 200px; /* Space between labels */
+      }
+      .image-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 80px; /* Increased gap between rows */
+        width: 100%;
+      }
+      .image-row {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        width: 100%;
+      }
+      .image-row img {
+        max-width: 30%;
+        height: auto;
+      }
+      .image-row-in {
+        display: flex;
+        justify-content: center;
+        gap: 150px;
+        width: 100%;
+      }
+      .image-row-in img {
+        max-width: 60%;
+        height: auto;
+      }
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .image-grid-with-labels {
+          margin-left: 30px;
+        }
+        .row-labels {
+          left: -30px;
+        }
+        .row-label {
+          font-size: 14px;
+        }
+        .image-row {
+          flex-direction: column;
+          align-items: center;
+        }
+        .image-row img {
+          max-width: 90%;
+          margin-bottom: 10px;
+        }
+        .image-row-in {
+          flex-direction: column;
+          align-items: center;
+        }
+        .image-row-in img {
+          max-width: 90%;
+          margin-bottom: 10px;
+        }
+        .input-output-images {
+          flex-direction: column;
+          align-items: center;
+        }
+        .molecule-container {
+          width: 90%;
+          margin-bottom: 10px;
+        }
+      }
+      .content-theorem {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: serif;
+        line-height: 1.6;
+      }
+      .has-text-justified {
+        text-align: justify;
+      }
+      .theorem {
+        font-style: italic;
+        margin: 1em 0;
+        padding: 10px 20px;
+        background-color: #f9f9f9;
+        border-left: 3px solid #ccc;
+      }
+      .theorem-title {
+        font-weight: bold;
+        font-style: normal;
+      }
+      </style>
   
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 </head>
@@ -360,6 +512,30 @@
 </section>
 <!-- End paper abstract -->
 
+<section class="section hero is-small">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Diffusion for graph translation</h2>
+        <div class="content has-text-justified">
+          <p>
+          Diffusion has been successfully applied to a wide range of tasks, including molecular generation.
+          The most notable gains of diffusion models over other generative models are the ability to generate diverse samples and the ability to condition on additional information.
+          We would like to bring these benefits to graph translation, the task of predicting a graph structure given another graph structure.
+          Diffusion models in this context start with a noisy graph (made of empty nodes and no edges) 
+          and iteratively add edges and nodes to transform the graph into the target graph conditioned on the input graph.
+          We show the denoising process in the context of retrosynthesis (predicting precursors for a given target molecule) below.
+          </p>
+          <video poster="" id="tree" autoplay controls muted loop height="100%">
+            <source src="static/videos/epoch740_denoising.mp4"
+            type="video/mp4">
+          </video>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Paper abstract -->
 <section class="section hero is-small">
   <div class="container is-max-desktop">
@@ -408,12 +584,52 @@
       <div class="column is-four-fifths">
         <h2 class="title is-3">Equivariance and Self-Symmetry</h2>
         <div class="content has-text-justified">
-          <p>It has been noted in the literature [CITE] that permutation equivariant functions struggle to map between a self-symmetrical 
-            input space to a less self-symmetrical output space. To confirm this observation, we train two models to translate a ring molecular structure into 
-            a less-self symmetrical structure. The first model is an equivariant GNN (GraphTransformer) 
-            and the second is a non-equivariant GNN (MPNN, achieved by adding unique positional encodings to the input features of each node).
-            We share the samples generated by the two models below and you can run the models yourself in this <a href="https://github.com/Aalto-QuML/DiffAlign.git" target="_blank">notebook</a>.
-          </p>
+            <p>It has been noted in the literature [CITE] that permutation equivariant functions struggle to map between a self-symmetrical
+              input space to a less self-symmetrical output space. To confirm this observation, we train two models to translate a ring molecular structure into
+              a less-self symmetrical structure. </p>
+            <div class="image-row-in">
+              <div class="molecule-container">
+                <p class="molecule-caption">Trioxane (highly self-symmetrical)</p>
+                <img src="static/images/in_m.png" alt="Self-Symmetrical Molecule">
+              </div>
+              <div class="molecule-container">
+                <p class="molecule-caption">3-chloropropan-1-ol (less self-symmetrical)</p>
+                <img src="static/images/out_m.png" alt="Ring Molecule">
+              </div>
+            </div>
+            <p>
+              The first model is an equivariant GNN (GraphTransformer)
+              and the second is a non-equivariant GNN (MPNN, achieved by adding unique positional encodings to the input features of each node).
+              We share the samples generated by the two models below and you can run the models yourself in this <a href="https://github.com/Aalto-QuML/DiffAlign/blob/gh-pages/notebooks/translate_selfsymmetrical_molecules.ipynb" target="_blank">notebook</a>.
+            </p>
+            <div class="image-grid-with-labels">
+              <!-- Samples label at the top -->
+              <div class="samples-label">samples</div>
+              
+              <div class="image-grid-content">
+                <!-- Left side labels -->
+                <div class="row-labels">
+                  <div class="row-label">Equivariant</div>
+                  <div class="row-label">Non-Equivariant</div>
+                </div>
+                
+                <!-- Images -->
+                <div class="image-rows">
+                  <!-- First row: Equivariant GNN results -->
+                  <div class="image-row">
+                    <img src="static/images/pred_m_0_usepe_False.png" alt="Equivariant GNN Result 1">
+                    <img src="static/images/pred_m_1_usepe_False.png" alt="Equivariant GNN Result 2">
+                    <img src="static/images/pred_m_2_usepe_False.png" alt="Equivariant GNN Result 3">
+                  </div>
+                  <!-- Second row: Non-equivariant GNN results -->
+                  <div class="image-row">
+                    <img src="static/images/pred_m_0_usepe_True.png" alt="Non-equivariant GNN Result 1">
+                    <img src="static/images/pred_m_0_usepe_True.png" alt="Non-equivariant GNN Result 2">
+                    <img src="static/images/pred_m_0_usepe_True.png" alt="Non-equivariant GNN Result 3">
+                  </div>
+                </div>
+              </div>
+            </div>
         </div>
       </div>
     </div>
@@ -429,11 +645,12 @@
         <h2 class="title is-3">What this means for Diffusion Models</h2>
         <div class="content has-text-justified">
           <p>Diffusion models are expected to transform a noisy input into a clean output by iteratively removing noise from the input. 
-            However, if the input is self-symmetrical, the model will struggle to produce a non-symmetrical output. 
+            However, the noisy input is likely to be self-symmetrical, and the model struggles to produce a non-symmetrical output. 
             To showcase this effect, we design a simple experiment where the goal is to copy a graph structure. 
             In a single diffusion step, the effect we get is the same as noticed in the previous section.
             However, if we run the diffusion process for more steps, the model will start to produce more and more different outputs. 
             It can even recover the source graph eventually.
+            <a href="https://github.com/Aalto-QuML/DiffAlign/blob/gh-pages/notebooks/grid_translation_with_diffusion.ipynb" target="_blank">notebook</a>.
           </p>
         </div>
       </div>
@@ -452,7 +669,18 @@
           <p>It turns out that the equivariant denoiser, in an attempt to balance the requirement to break symmetries while maintaining equivariance, 
             will eventually learn a distribution equal to the marginal distribution of the input labels.
 
-            Formally, we write... (or refer to the paper for the theorem + proof?)
+            Formally, we write... 
+            <div class="theorem">
+              <span class="theorem-title">Theorem (The optimal permutation equivariant denoiser).</span>
+              Let $D_\theta(\X_T, \Y)$ be permutation equivariant s.t.\ $D_\theta(\P\X_T, \Y) = \P D_\theta(\X_T, \Y)$, and let $q(\X_T)$ be permutation invariant. The optimal solution with respect to the cross-entropy loss with the identity data is, for all nodes $i$ and $j$
+              \begin{equation}
+                  \begin{cases}
+                      D_\theta(\X_T, \Y)^\N_{i,:} = \hat\y^\N, \hat \y^\N_k = \sum_{i} \Y_{i,k} / \sum_{i,k} \Y_{i,k},\\
+                      D_\theta(\X_T, \Y)^E_{i,j,:} = \hat\y^E, \hat \y^E_k = \sum_{i,j} \Y_{i,j,k} / \sum_{i,j,k} \Y_{i,j,k}, 
+                  \end{cases}
+              \end{equation}
+              where $\hat\y^\N_k$ and $\hat\y^E_k$ are the marginal distributions of node and edge values in $\Y$.
+            </div>
           </p>
         </div>
       </div>
