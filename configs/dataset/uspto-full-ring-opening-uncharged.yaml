@@ -1,0 +1,67 @@
+name: 'uspto-full'
+dataset_nb: 'uncharged-block-40'
+datadir: 'data/uspto-full-ring-opening'
+datadist_dir: 'data/uspto-full-ring-opening'
+pin_memory: False
+remove_h: False
+shuffle: True
+with_explicit_h: False
+with_formal_charge: False
+nb_rct_dummy_nodes: 40 # change this
+num_workers: 0
+num_processes: 8
+permute_mols: False
+zero_bond_order: False
+batchsize_bins: {'train': [16, 16, 16, 8, 4, 1, 1], 'test': [16], 'val': [16]}
+size_bins: {'train': [64, 83, 102, 140, 200, 300, 400], 'test': [250],'val': [250]}
+canonicalize_molecule: False 
+atom_types: ['none', 'W', 'Tl', 'Mg', 'Li', 'Ru', 'O', 'Cr', 'S', 'Na', 'Mn', 'Zn', 'Br', 'Sn', 
+             'C', 'Pt', 'I', 'Si', 'K', 'Al', 'Se', 'Cl', 'H', 'Cu', 'B', 'N', 'F', 'P', 'U', 'Au', 'SuNo']
+atom_charges: [0, 1, 2, 3, -2, -1]
+bond_types: ['none', 'SINGLE', 'DOUBLE', 'TRIPLE', 'mol', 'within', 'across']
+pre_align_graphs: True
+process_only: none
+recalculate_atom_maps: False
+different_valencies: False 
+atom_chiral_tags: ['none', 'ccw', 'cw']
+bond_dirs: ['none', 'ENDUPRIGHT', 'ENDDOWNRIGHT']
+with_formal_charge_in_atom_symbols: False
+drop_atom_maps_rate: 0.0
+add_supernode_edges: False
+add_supernodes: False
+use_stereochemistry: False
+use_charges_as_features: False
+allowed_bonds:
+  'W': [-1]
+  'Tl': [3]
+  'Mg': [2, -1]
+  'Li': [1, -1]
+  'Ru': [-1]
+  'O': [2]
+  'Cr': [-1]
+  'S': [2, 4, 6]
+  'Na': [1, -1]
+  'Mn': [-1]
+  'Zn': [-1]
+  'Br': [1]
+  'Sn': [2, 4]
+  'C': [4]
+  'Pt': [-1]
+  'I': [1, 3, 5]
+  'Si': [4, 6]
+  'K': [1, -1]
+  'Al': [3, 6]
+  'Se': [2, 4, 6]
+  'Cl': [1]
+  'H': [1]
+  'Cu': [-1]
+  'B': [3]
+  'N': [3]
+  'F': [1]
+  'P': [3, 5, 7]
+  'U': [6]
+  'Au': [0]
+dataset_size:
+  train: 17418
+  test: 2196
+  val: 2202

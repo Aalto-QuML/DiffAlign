@@ -1,0 +1,124 @@
+# @package _global_
+dataset:
+  batchsize_bins:
+    test:
+    - 32
+    train:
+    - 16
+    - 16
+    - 16
+    - 16
+    val:
+    - 32
+  # dataset_nb: block-15
+  name: uspto-50k
+  nb_rct_dummy_nodes: 15
+  num_workers: 0
+  shuffle: true
+  size_bins:
+    test:
+    - 250
+    train:
+    - 64
+    - 83
+    - 102
+    - 140
+    val:
+    - 250
+  with_explicit_h: false
+diffusion:
+  ce_lambda: 0.1
+  classifier_free_guidance: false
+  classifier_free_guidance_weight: 0.1
+  classifier_free_uncond_prob: 0.1
+  denoiser: neuralnet
+  diffuse_edges: true
+  diffuse_nodes: true
+  diffusion_noise_schedule: cosine
+  diffusion_steps: 500
+  diffusion_steps_eval: 100
+  edge_conditional_set: val
+  edge_states_to_mask:
+  - mol
+  - within
+  - across
+  extra_features: true
+  lambda_train:
+  - 5
+  - 0
+  mask_edges: product_and_sn
+  mask_nodes: product_and_sn
+  node_states_to_mask:
+  - SuNo
+  - none
+  transition: absorbing_masknoedge
+general:
+  name: rxn-default-train
+  project: retrodiffuser
+  task: rxn
+  wandb_id: null
+neuralnet:
+  architecture: with_y
+  checkpoint_file: null
+  ema_decay: 0.999
+  extra_features: true
+  hidden_dims:
+    de: 64
+    dim_ffE: 128
+    dim_ffX: 256
+    dim_ffy: 128
+    dx: 256
+    dy: 64
+    n_head: 8
+  hidden_mlp_dims:
+    E: 128
+    X: 256
+    y: 128
+  increase_y_dim_for_multigpu: true
+  n_layers: 9
+  pos_encoding_type: laplacian_pos_enc
+  use_ema: false
+  num_lap_eig_vectors: 20
+  p_to_r_skip_connection: True
+  p_to_r_init: 1.0
+  pos_emb_permutations: -1
+  alignment_type: correct
+test:
+  batch_size: 32
+  elbo_samples: 32
+  full_dataset: false
+  loss_0_repeat: 1
+  n_conditions: 8
+  n_samples_per_condition: 100
+  plot_dummy_nodes: false
+  rep_samples_per_condition: 1
+  repeat_elbo: 1
+  size_test_splits: 100
+  smiles_accuracy: true
+  testfile: 0
+  topks:
+  - 1
+  - 3
+  - 5
+  - 10
+  - 50
+  - 100
+  wandb_log_samples: true
+  wandb_run_config: 2609_marginal_reactant_and_sn_dummy0_ce_clfgTrue_config.pickle
+  wandb_run_name: rxn_marginal_reactant_and_sn_dummy0_ce_clfgTrue
+  with_denoising: true
+train:
+  batch_by_size: false
+  batch_size: 16
+  chains_to_save: 4
+  epochs: 1000
+  eval_every_epoch: 20
+  grad_every_step: 100
+  log_every_t: 2
+  log_grad: false
+  log_to_wandb: true
+  loss: ce
+  lr: 2e-4
+  samples_to_generate: 4
+  seed: 1
+  with_mask: false

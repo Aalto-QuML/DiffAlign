@@ -1,0 +1,65 @@
+# @package _global_
+general:
+  project: 'retrodiffuser' # for wandb logging
+  name : 'eval-rxn-train-100st-200ep-topk'
+  task: 'rxn'
+diffusion: 
+  transition: 'absorbing_masknoedge'
+  denoiser: 'neuralnet'
+  edge_conditional_set: 'train'
+  diffuse_edges: True
+  diffusion_noise_schedule: 'cosine'    
+  diffusion_steps: 100
+  lambda_train: [5, 0]
+  ce_lambda: 0.01 # used with loss vb+ce
+  extra_features: 'all'
+  mask_nodes: 'product_and_sn' # sn, reactant, product_and_sn, reactant_and_sn, first_n, ring
+  mask_edges: 'product_and_sn'
+  node_states_to_mask: ['SuNo', 'none']
+  edge_states_to_mask: ['mol', 'within', 'across']
+  temperature_scaling_node: 1.0
+  temperature_scaling_edge: 1.0
+neuralnet:
+  use_ema: False
+  ema_decay: 0.999
+  checkpoint_file: '9layers_edgegen_100st_200ep.pt'
+  architecture: 'with_y'
+  n_layers: 9
+  hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
+  hidden_dims : {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+  # hidden_dims : {'dx': 32, 'de': 1, 'dy': 1, 'n_head': 1, 'dim_ffX': 16, 'dim_ffE': 1, 'dim_ffy': 1}
+  # hidden_mlp_dims: {'X': 16, 'E': 1,'y': 1}
+dataset:
+  name: uspto-50k
+  dataset_nb: '' #'10-mixed'
+  num_workers: 0
+  shuffle: False
+train:
+  with_mask: False
+  seed: 1
+  loss: 'ce'
+  epochs: 12
+  lr: 1e-4
+  batch_size: 4
+  batch_by_size: False
+  log_to_wandb: False
+  log_grad: False
+  grad_every_step: 100
+  eval_every_epoch: 2
+  log_every_t: 10
+  chains_to_save: 1
+  samples_to_generate: 1
+test:
+  testfile: 0
+  full_dataset: False
+  elbo_samples: 2
+  n_conditions: 64 # total number of samples from the test set
+  batch_size: 16 # size of batch to iterate over 
+  n_samples_per_condition: 100
+  rep_samples_per_condition: 1 # max samples to generate for each batch (for memory reasons)
+  smiles_accuracy: True
+  size_test_splits: 4
+  with_denoising: True
+  wandb_log_samples: False
+  topks: [1, 5, 50, 100]
+  loss_0_repeat: 300

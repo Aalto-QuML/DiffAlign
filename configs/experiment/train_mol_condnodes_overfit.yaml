@@ -1,0 +1,68 @@
+# @package _global_
+general:
+  project: 'retrodiffuser' # for wandb logging
+  name : 'mol-condnodes-overfit'
+  task: 'mol'
+diffusion: 
+  transition: 'absorbing_masknoedge'
+  denoiser: 'neuralnet'
+  edge_conditional_set: 'test'
+  diffuse_edges: True
+  diffuse_nodes: False
+  diffusion_noise_schedule: 'cosine'    
+  diffusion_steps: 1
+  lambda_train: [1, 0]
+  ce_lambda: 0.01 # used with loss vb+ce
+  extra_features: null
+  mask_nodes: null # sn, reactant, product_and_sn, reactant_and_sn, first_n, ring
+  mask_edges: null
+  node_states_to_mask: ['none']
+  edge_states_to_mask: null
+neuralnet:
+  use_ema: False
+  ema_decay: 0.999
+  checkpoint_file: null
+  architecture: 'with_y_pos_enc'
+  n_layers: 4
+  hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
+  hidden_dims : {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 
+                 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+  # hidden_dims : {'dx': 16, 'de': 8, 'dy': 8, 'n_head': 2, 'dim_ffX': 16, 'dim_ffE': 8, 'dim_ffy': 8}
+  # hidden_mlp_dims: {'X': 16, 'E': 8,'y': 8}
+dataset:
+  name: uspto-50k
+  dataset_nb: '10-mixed'
+  num_workers: 0
+  shuffle: True
+train:
+  with_mask: False
+  seed: 1
+  loss: 'ce'
+  epochs: 2000
+  lr: 1e-3
+  batch_size: 512
+  batch_by_size: False
+  log_to_wandb: False
+  log_grad: False
+  grad_every_step: 100
+  eval_every_epoch: 50
+  log_every_t: 1
+  chains_to_save: 2
+  samples_to_generate: 2
+  best_model_criterion: 'fcd_custom'
+test:
+  testfile: 0
+  full_dataset: False
+  elbo_samples: 4
+  n_samples: 2
+  n_conditions: 4 # total number of samples from the test set
+  batch_size: 4 # size of batch to iterate over 
+  n_samples_per_condition: 2
+  rep_samples_per_condition: 2 # max samples to generate for each batch (for memory reasons)
+  smiles_accuracy: True
+  size_test_splits: 4
+  with_denoising: True
+  wandb_log_samples: False
+  topks: []
+  loss_0_repeat: 10
+

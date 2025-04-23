@@ -1,0 +1,8 @@
+name: 'qm9'
+datadir: 'data/qm9/qm9_pyg'
+datadist_dir: 'data/qm9/qm9_pyg' 
+pin_memory: False
+remove_h: False
+num_workers: 0
+num_processes: 4
+shuffle: False

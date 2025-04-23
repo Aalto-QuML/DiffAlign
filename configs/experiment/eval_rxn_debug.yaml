@@ -1,0 +1,72 @@
+# @package _global_
+general:
+  project: 'retrodiffuser' # for wandb logging
+  name : 'eval'
+  task: 'rxn'
+diffusion: 
+  transition: 'marginal'
+  denoiser: 'neuralnet'
+  edge_conditional_set: 'train' # This is used for other stuff as well now than edge conditional 
+  diffuse_edges: True
+  diffuse_nodes: True
+  diffusion_noise_schedule: 'cosine'    
+  diffusion_steps: 100
+  lambda_train: [1, 0]
+  ce_lambda: 0.01 # used with loss vb+ce
+  mask_nodes: 'product_and_sn' # sn, reactant, product_and_sn, reactant_and_sn, first_n, ring
+  mask_edges: 'product_and_sn'
+  node_states_to_mask: ['SuNo', 'none']
+  edge_states_to_mask: ['mol', 'within', 'across']
+neuralnet:
+  use_ema: False
+  ema_decay: 0.999
+  checkpoint_file: 
+  architecture: 'with_y' #'with_y_pos_enc'
+  n_layers: 2
+  # hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
+  # hidden_dims : {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 
+  #                'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+  # hidden_dims : {'dx': 32, 'de': 1, 'dy': 1, 'n_head': 1, 'dim_ffX': 16, 'dim_ffE': 1, 'dim_ffy': 1}
+  # hidden_mlp_dims: {'X': 16, 'E': 1,'y': 1}
+  hidden_dims : {'dx': 16, 'de': 8, 'dy': 8, 'n_head': 2, 'dim_ffX': 16, 'dim_ffE': 8, 'dim_ffy': 8}
+  hidden_mlp_dims: {'X': 16, 'E': 8,'y': 8}
+  extra_features: True
+dataset:
+  name: uspto-50k
+  dataset_nb: 'debug' #'1'
+  num_workers: 0
+  shuffle: False
+  with_explicit_h: True
+  # for now, eval on old data processing
+  nb_rct_dummy_nodes: 3
+train:
+  with_mask: False
+  seed: 1
+  loss: 'vb'
+  epochs: 800
+  lr: 1e-3
+  batch_size: 1
+  batch_by_size: True
+  log_to_wandb: False
+  log_grad: False
+  grad_every_step: 100
+  eval_every_epoch: 200
+  log_every_t: 20
+  chains_to_save: 1
+  samples_to_generate: 1
+test:
+  testfile: 0
+  repeat_elbo: 1
+  loss_0_repeat: 1
+  elbo_samples: 1
+  full_dataset: False
+  plot_dummy_nodes: True
+  n_conditions: 1 # total number of samples from the test set
+  batch_size: 1 # size of batch to iterate over when ELBO evaluation
+  n_samples_per_condition: 4 # size of batch to iterate over when sampling based on different conditionings
+  rep_samples_per_condition: 1 # max samples to generate for each condition (for memory reasons)
+  smiles_accuracy: True
+  size_test_splits: 100
+  with_denoising: True
+  wandb_log_samples: True
+  topks: [1, 3, 5, 10, 50, 100]

@@ -1,0 +1,16 @@
+data/
+__pycache__/
+outputs/
+experiments/
+diffalign.egg-info/
+.vscode/
+poster/
+.DS_Store
+data/
+__pycache__/
+*.DS_Store
+_DS_Store
+*.log
+*.aux
+*.gz
+
