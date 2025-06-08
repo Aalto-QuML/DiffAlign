@@ -1,0 +1,6 @@
+training:
+    epochs: 100
+    val_interval: 10
+    print_every: 10
+    save_every: 10
+    checkpoint_dir: "checkpoints"
