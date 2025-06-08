@@ -9,6 +9,7 @@ from diffalign.training.helpers import load_data, create_model_and_optimizer, \
 def main(cfg):
     # load the data
     train_loader, val_loader = load_data(cfg)
+    exit()
 
     # create the model
     model, optimizer, scheduler = create_model_and_optimizer(cfg)
