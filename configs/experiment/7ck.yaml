@@ -85,6 +85,11 @@ train:
   samples_to_generate: 4
   best_model_criterion: top-5
   num_annealing_epochs: 10
+  resume: false
+  resume_checkpoint_path: null
+
+evaluate:
+  checkpoint_path: null
 
 dataset:
   name: uspto-50k
@@ -232,6 +237,7 @@ dataset:
     - +
     - -
     - 0
+  use_stereochemistry: false
 
 general:
   gpus: 1
@@ -305,8 +311,8 @@ neuralnet:
     dim_ffX: 256
     dim_ffy: 128
   p_to_r_init: 1
-  #architecture: with_y_atommap_number_pos_enc
-  architecture: with_y_atommap_number_pos_enc_stereo
+  architecture: with_y_atommap_number_pos_enc
+  #architecture: with_y_atommap_number_pos_enc_stereo
   use_all_gpus: true
   alignment_type: correct
   extra_features: true

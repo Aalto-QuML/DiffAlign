@@ -6,7 +6,7 @@ from diffalign.training.helpers import load_data, create_model_and_optimizer, \
                                         train_batch, validate, save_checkpoint
 
 @hydra.main(config_path='../configs', config_name='config.yaml')
-def main(cfg):
+def train(cfg):
     # load the data
     train_loader, val_loader = load_data(cfg)
 
@@ -30,4 +30,4 @@ def main(cfg):
             save_checkpoint(model, optimizer, epoch, cfg.training.checkpoint_dir)
 
 if __name__ == '__main__':
-    main()
+    train()

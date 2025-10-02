@@ -20,6 +20,7 @@ from diffalign.model.ema_pytorch import EMA
 import diffalign.model.diffusion_helpers as helpers
 from diffalign.helpers import DotDict
 import traceback
+from rdkit.Chem.rdchem import BondType as BT
 
 # A logger for this file
 log = logging.getLogger(__name__)
@@ -36,9 +37,11 @@ class DiscreteDenoisingDiffusion(nn.Module):
         # input_dims = dataset_infos.input_dims
         # output_dims = dataset_infos.output_dims
         # nodes_dist = dataset_infos.nodes_dist
-        bond_types = ['none', 'mol', 'within', 'across']
-        input_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
-        output_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
+        #bond_types = ['none', 'mol', 'within', 'across', 'single', 'double', 'aromatic']
+        bond_types = ['none', BT.SINGLE, BT.DOUBLE, BT.TRIPLE, 'mol', 'within', 'across']
+        input_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 1, 
+                     'atom_chiral': 0, 'bond_dirs': 0, 'atom_charges': 0}
+        output_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 0, 'bond_dirs': 0, 'atom_charges': 0}
         nodes_dist = []
         dataset_infos = DotDict({
             'input_dims': input_dims,
