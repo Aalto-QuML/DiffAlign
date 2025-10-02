@@ -36,17 +36,17 @@ class DiscreteDenoisingDiffusion(nn.Module):
         # input_dims = dataset_infos.input_dims
         # output_dims = dataset_infos.output_dims
         # nodes_dist = dataset_infos.nodes_dist
-
-        input_dims = {'X': 16, 'E': 2, 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
-        output_dims = {'X': 16, 'E': 2, 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
+        bond_types = ['none', 'mol', 'within', 'across']
+        input_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
+        output_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 2, 'bond_dirs': 2}
         nodes_dist = []
         dataset_infos = DotDict({
             'input_dims': input_dims,
             'output_dims': output_dims,
             'nodes_dist': nodes_dist,
-            'atom_decoder': ['none', 'Au'],
-            'bond_decoder': ['none'],
-            'atom_charges': [],
+            'atom_decoder': cfg.dataset.atom_types,
+            'bond_decoder': bond_types,
+            'atom_charges': ['+', '-', '0'],
             'atom_chiral_tags': [],
             'bond_dirs': [],
             'valencies': [],

@@ -1,14 +1,21 @@
+# directories
 dataset/
-__pycache__/
+checkpoints/
 outputs/
 experiments/
-diffalign.egg-info/
-.vscode/
 poster/
-.DS_Store
+
+# cache
 __pycache__/
+.DS_Store
 *.DS_Store
 _DS_Store
+.vscode/
+
+# editable package
+diffalign.egg-info/
+
+# latex
 *.log
 *.aux
 *.gz
