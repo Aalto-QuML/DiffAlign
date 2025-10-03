@@ -7,17 +7,19 @@ from rdkit import Chem
 from rdkit.Chem import rdFMCS
 from collections import Counter
 
+from collections import defaultdict
+
 import pickle
 import math
 import os
 import gzip
-from diffalign_old.utils import data_utils
+from diffalign.data import *
 
 import logging
 log = logging.getLogger(__name__)
 
-from diffalign_old.utils import graph
-from diffalign_old.utils import graph_matching_utils
+from diffalign.data import graph
+from diffalign.data import mol
 import torch
 import torch.nn.functional as F
 from torch_geometric.utils import to_dense_adj, to_dense_batch, remove_self_loops, dense_to_sparse
@@ -30,7 +32,7 @@ import signal
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-from diffalign_old.utils import mol
+from diffalign.data import mol
 
 # bond_types = ['none', BT.SINGLE, BT.DOUBLE, BT.TRIPLE, 'mol', 'within', 'across']
 
@@ -85,6 +87,46 @@ def handler(signum, frame):
 
 from multiprocessing import get_context
 import time
+
+def get_index_from_states(atom_decoder, bond_decoder, node_states_to_mask, edge_states_to_mask, device):
+    if not 'none' in node_states_to_mask:
+        node_states_to_mask.append('none')
+    if node_states_to_mask!=None:
+        not_in_list = [a for a in node_states_to_mask if a not in atom_decoder]
+        assert len(not_in_list)==0, f'node_states_to_mask contains states not in atom_decoder: {not_in_list}'
+        idx_of_states = [atom_decoder.index(a) for a in node_states_to_mask]
+        node_idx_to_mask = torch.tensor(idx_of_states, dtype=torch.long, device=device)
+    else:
+        node_idx_to_mask = torch.empty((1,), dtype=torch.long, device=device)
+        
+    if edge_states_to_mask!=None:
+        not_in_list = [a for a in edge_states_to_mask if a not in bond_decoder]
+        assert len(not_in_list)==0, f'edge_states_to_mask contains states not in bond_decoder: {not_in_list}'
+        idx_of_states = [bond_decoder.index(a) for a in edge_states_to_mask]
+        edge_idx_to_mask = torch.tensor(idx_of_states, dtype=torch.long, device=device)  
+    # don't mask none in edges, used as masking state
+    else:
+        #edge_idx_to_mask = torch.empty((1,), dtype=torch.long, device=device)
+        edge_idx_to_mask = None
+     
+    return node_idx_to_mask, edge_idx_to_mask
+
+# Permute the rows here to make sure that the NN can only process topological information
+def permute_rows(nodes, mask_atom_mapping, mol_assignment, edge_index):
+    # Permutes the graph specified by nodes, mask_atom_mapping, mol_assignment and edge_index
+    # nodes: (n,d_x) node feature tensor
+    # mask_atom_mapping (n,) tensor
+    # mol_assignment: (n,) tensor
+    # edge_index: (2,num_edges) tensor
+    # does everything in-place
+    rct_section_len = nodes.shape[0]
+    perm = torch.randperm(rct_section_len)
+    nodes[:] = nodes[perm]
+    mask_atom_mapping[:rct_section_len] = mask_atom_mapping[:rct_section_len][perm]
+    mol_assignment[:rct_section_len] = mol_assignment[:rct_section_len][perm]
+    inv_perm = torch.zeros(rct_section_len, dtype=torch.long)
+    inv_perm.scatter_(dim=0, index=perm, src=torch.arange(rct_section_len))
+    edge_index[:] = inv_perm[edge_index]
 
 def timeout_wrapper_OLD(func, args=(), kwargs={}, timeout_duration=10):
     def wrapper(result_queue, func, args, kwargs):
@@ -152,7 +194,7 @@ def turn_reactants_and_product_smiles_into_graphs(cfg, reactants, products, data
 
     # Permute the rows here to make sure that the NN can only process topological information
     if cfg.dataset.permute_mols:
-        data_utils.permute_rows(nodes_rct, atom_map_reactants, mol_assignment_reactants, edge_index_rct)
+        permute_rows(nodes_rct, atom_map_reactants, mol_assignment_reactants, edge_index_rct)
 
     offset = 0
     for j, p in enumerate(products):
@@ -260,7 +302,7 @@ def turn_reactants_and_product_smiles_into_graphs_for_all_datasets(cfg, reactant
 
     # Permute the rows here to make sure that the NN can only process topological information
     if cfg.dataset.permute_mols:
-        data_utils.permute_rows(nodes_rct, atom_map_reactants, mol_assignment_reactants, edge_index_rct)
+        permute_rows(nodes_rct, atom_map_reactants, mol_assignment_reactants, edge_index_rct)
 
     offset = 0
     for j, p in enumerate(products):
@@ -649,7 +691,7 @@ def choose_highest_probability_atom_mapping_from_placeholder(gen_samples_placeho
     original_atom_mapping = get_rct_atom_mapping_from_smiles(gen_rxn_smiles_with_am_with_one_group[0])
     if original_atom_mapping is None:
         return gen_samples_placeholder_with_one_group.slice_by_idx(1).atom_map_numbers[0]
-    resolved_mols, top_atom_mapping = graph_matching_utils.resolve_atom_mappings([r.split('>>')[0] for r in gen_rxn_smiles_with_am_with_one_group])
+    resolved_mols, top_atom_mapping = mol.resolve_atom_mappings([r.split('>>')[0] for r in gen_rxn_smiles_with_am_with_one_group])
     #top_atom_mapping = choose_highest_probability_atom_mapping_from_smiles(gen_rxn_smiles_with_am_with_one_group)
     
     # create a mapping from the original atom mapping in the first reactant set to the top atom mapping of the corresponding atoms
@@ -1573,7 +1615,24 @@ def select_placeholder_from_chain_by_batch_and_sample(chains, bs, n_samples, bat
     assert len(chains)>0, 'Chain is empty.'
     
     return [(time_step, placeh.select_by_batch_and_sample_idx(bs, n_samples, batch_idx, sample_idx)) for time_step, placeh in chains]
-                      
+
+def resolve_atom_mappings(smiles_list):
+    mol_list = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
+    
+    if all(mol is None for mol in mol_list):
+        print("Error: No valid molecules found in the input list.")
+        return None, None
+    
+    aggregated_mappings = aggregate_matchings(mol_list)
+    most_likely_mappings = get_unique_most_likely_mappings(aggregated_mappings)
+    
+    # Apply the most likely mappings to all molecules
+    for mol in mol_list:
+        for i, mapping in enumerate(most_likely_mappings):
+            mol.GetAtomWithIdx(i).SetAtomMapNum(mapping)
+    
+    return mol_list, most_likely_mappings
+
 def encode_no_element(A):
     '''
         Turns no elements (e.g. from dense padding) to one-hot encoded vectors.
@@ -2003,7 +2062,59 @@ def get_mask_reactant(origX, atom_decoder, device):
     mask_sn = get_mask_sn(origX, atom_decoder, device)
     
     return ~(mask_prod*mask_sn)
+
+def get_all_matches(mol1, mol2):
+    return mol2.GetSubstructMatches(mol1, uniquify=False)
     
+def score_matching(mol1, mol2, matching):
+    score = 0
+    for i, j in enumerate(matching):
+        atom1 = mol1.GetAtomWithIdx(i)
+        atom2 = mol2.GetAtomWithIdx(j)
+        if atom1.GetAtomMapNum() == atom2.GetAtomMapNum() and atom1.GetAtomMapNum() != 0:
+            score += 1
+    return score
+    
+def aggregate_matchings(mol_list):
+    if not mol_list:
+        return []
+
+    n_atoms = mol_list[0].GetNumAtoms()
+    aggregated_mappings = [defaultdict(int) for _ in range(n_atoms)]
+    
+    # First, aggregate the atom mappings from all molecules
+    for mol in mol_list:
+        for i in range(n_atoms):
+            atom = mol.GetAtomWithIdx(i)
+            map_num = atom.GetAtomMapNum()
+            if map_num != 0:
+                aggregated_mappings[i][map_num] += 1
+    
+    # Then, aggregate matchings between pairs of molecules
+    for i in range(len(mol_list)):
+        for j in range(i+1, len(mol_list)):
+            matching = get_best_matching(mol_list[i], mol_list[j])
+            if matching:
+                for k, l in enumerate(matching):
+                    atom_i = mol_list[i].GetAtomWithIdx(k)
+                    atom_j = mol_list[j].GetAtomWithIdx(l)
+                    map_i = atom_i.GetAtomMapNum()
+                    map_j = atom_j.GetAtomMapNum()
+                    
+                    if map_i != 0:
+                        aggregated_mappings[k][map_i] += 1
+                    if map_j != 0:
+                        aggregated_mappings[l][map_j] += 1  # Note the change from k to l here
+    
+    return aggregated_mappings
+
+def get_best_matching(mol1, mol2):
+    matches = get_all_matches(mol1, mol2)
+    if not matches:
+        return None
+    scores = [score_matching(mol1, mol2, match) for match in matches]
+    return matches[scores.index(max(scores))]
+
 def from_mask_to_maskX_maskE(mask_nodes, mask_edges, shape_X, shape_E):
     mask_X = mask_nodes.unsqueeze(dim=-1) # (bs, n, 1)
     mask_X = mask_X.expand(-1, -1, shape_X[-1]) # (bs, n ,v)

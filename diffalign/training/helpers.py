@@ -1,5 +1,6 @@
 from pickletools import optimize
-from torch.utils.data import DataLoader
+#from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader
 import torch
 
 from diffalign.model.diffusion import DiscreteDenoisingDiffusionRxn

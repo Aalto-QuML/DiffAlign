@@ -2,12 +2,13 @@ import os
 import pathlib
 import logging
 import copy
+import re
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import autocast
-from rdkit import RDLogger
+from rdkit import RDLogger, Chem
 RDLogger.DisableLog('rdApp.*') # Disable rdkit warnings
 
 
@@ -43,6 +44,19 @@ class DiscreteDenoisingDiffusion(nn.Module):
                      'atom_chiral': 0, 'bond_dirs': 0, 'atom_charges': 0}
         output_dims = {'X': len(cfg.dataset.atom_types), 'E': len(bond_types), 'y': 0, 'atom_chiral': 0, 'bond_dirs': 0, 'atom_charges': 0}
         nodes_dist = []
+        bond_orders = mol.get_bond_orders(mol.get_rdkit_bond_types(bond_types))
+        periodic_table = Chem.rdchem.GetPeriodicTable()
+        atom_weights = [0] + [periodic_table.GetAtomicWeight(re.split(r'\+|\-', atom_type)[0]) for atom_type in cfg.dataset.atom_types[1:-1]] + [0] # discard charge
+        atom_weights = {atom_type: weight for atom_type, weight in zip(cfg.dataset.atom_types, atom_weights)}
+        valencies = list(mol.get_possible_valences(atom_type)[0] for atom_type in cfg.dataset.atom_types)
+        chiral_tags = [c.strip() for c in open(os.path.join(parent_path, 'dataset',
+                                                            cfg.dataset.data_dir, 'processed',
+                                                            'atom_chiral_tags.txt'), 'r').read().splitlines()]
+        atom_chiral_tags = mol.get_rdkit_chiral_tags(chiral_tags)
+        bond_dirs = [b.strip() for b in open(os.path.join(parent_path, 'dataset', 
+                                                            cfg.dataset.data_dir, 'processed', 
+                                                            'bond_dirs.txt'), 'r').read().splitlines()]
+        bond_dirs = mol.get_rdkit_bond_dirs(bond_dirs)
         dataset_infos = DotDict({
             'input_dims': input_dims,
             'output_dims': output_dims,
@@ -50,11 +64,14 @@ class DiscreteDenoisingDiffusion(nn.Module):
             'atom_decoder': cfg.dataset.atom_types,
             'bond_decoder': bond_types,
             'atom_charges': ['+', '-', '0'],
-            'atom_chiral_tags': [],
-            'bond_dirs': [],
-            'valencies': [],
-            'atom_weights': [],
+            'atom_chiral_tags': atom_chiral_tags,
+            'bond_dirs': bond_dirs,
+            'valencies': valencies,
+            'atom_weights': atom_weights,
             'max_weight': 0,
+            'max_n_nodes': 200,
+            'remove_h': False,
+            'bond_orders': bond_orders
         })
         
         if cfg.neuralnet.extra_features:
@@ -601,7 +618,7 @@ class DiscreteDenoisingDiffusion(nn.Module):
 
             # save chains if relevant
             # need to mask here to keep consistency for plotting
-            if get_chains and (s_int%self.cfg.training.log_every_t==0 or s_int==self.T-1): 
+            if get_chains and (s_int%self.cfg.train.log_every_t==0 or s_int==self.T-1): 
                 prob_s_, pred_ = helpers.format_intermediate_samples_for_plotting(self.cfg, prob_s, pred, dense_data, inpaint_node_idx, inpaint_edge_idx)
                 # The logic: We plot the samples starting from T, and the denoising/NN outputs starting at T-1, e.g., p(x_{T-1}|x_T)
                 sample_chains.append((s_int+1, z_t.mask(z_t.node_mask, collapse=True)))
@@ -639,8 +656,8 @@ class DiscreteDenoisingDiffusion(nn.Module):
         """ At every training step (after adding noise) and step in sampling, compute extra information and append to
             the network input. """
         
-        from diffalign.neuralnet.extra_features import ExtraFeatures
-        from diffalign.neuralnet.extra_features_molecular import ExtraMolecularFeatures
+        from diffalign.model.transformer_model_with_y import ExtraFeatures
+        from diffalign.model.transformer_model_with_y import ExtraMolecularFeatures
         self.extra_features_calculator = ExtraFeatures('all', self.dataset_info)
         self.extra_molecular_features_calculator = ExtraMolecularFeatures(self.dataset_info)
 
@@ -653,32 +670,35 @@ class DiscreteDenoisingDiffusion(nn.Module):
         # input_dims['E'] = input_dims['E']
         # input_dims['y'] = input_dims['y'] + 12
 
-        try:
-            X_, E_, y_ = self.extra_features_calculator(noisy_data.E.to('cpu'), noisy_data.node_mask.to('cpu'))
-            extra_features = noisy_data.get_new_object(X=X_.to(device), E=E_.to(device), y=y_.to(device))
-            X_, E_, y_ = self.extra_molecular_features_calculator(noisy_data.X.to('cpu'), noisy_data.E.to('cpu'))
-            extra_molecular_features = noisy_data.get_new_object(X=X_.to(device), E=E_.to(device), y=y_.to(device))
+        #try:
+        X_, E_, y_ = self.extra_features_calculator(noisy_data.E.to('cpu'), noisy_data.node_mask.to('cpu'))
+        extra_features = noisy_data.get_new_object(X=X_.to(device), E=E_.to(device), y=y_.to(device))
+        X_, E_, y_ = self.extra_molecular_features_calculator(noisy_data.X.to('cpu'), noisy_data.E.to('cpu'))
+        extra_molecular_features = noisy_data.get_new_object(X=X_.to(device), E=E_.to(device), y=y_.to(device))
 
-            extra_features.X = extra_features.X.detach() # don't allow backpropagation through these, it doesn't work
-            extra_features.E = extra_features.E.detach()
-            extra_features.y = extra_features.y.detach()
-            extra_molecular_features.X = extra_molecular_features.X.detach()
-            extra_molecular_features.E = extra_molecular_features.E.detach()
-            extra_molecular_features.y = extra_molecular_features.y.detach()
+        extra_features.X = extra_features.X.detach() # don't allow backpropagation through these, it doesn't work
+        extra_features.E = extra_features.E.detach()
+        extra_features.y = extra_features.y.detach()
+        extra_molecular_features.X = extra_molecular_features.X.detach()
+        extra_molecular_features.E = extra_molecular_features.E.detach()
+        extra_molecular_features.y = extra_molecular_features.y.detach()
 
-            extra_X = torch.cat((noisy_data.X, extra_features.X, extra_molecular_features.X), dim=-1) 
-            extra_E = torch.cat((noisy_data.E, extra_features.E, extra_molecular_features.E), dim=-1)
-            extra_y = torch.cat((noisy_data.y, extra_features.y, extra_molecular_features.y), dim=-1)
-        except:
-            log.info("Couldn't calculate the extra features for some reason")
-            bs = noisy_data.X.shape[0]
-            n = noisy_data.X.shape[1]
-            device = noisy_data.X.device
-            extra_features = noisy_data.get_new_object(X=torch.zeros(bs,n,8,device=device), E=torch.zeros(bs,n,n,0, device=device), y=torch.zeros(n,12,device=device))
-            # extra_molecular_features = noisy_data.get_new_object()
-            extra_X = torch.cat((noisy_data.X, extra_features.X), dim=-1) 
-            extra_E = torch.cat((noisy_data.E, extra_features.E), dim=-1)
-            extra_y = torch.cat((noisy_data.y, extra_features.y), dim=-1)
+        extra_X = torch.cat((noisy_data.X, extra_features.X, extra_molecular_features.X), dim=-1) 
+        extra_E = torch.cat((noisy_data.E, extra_features.E, extra_molecular_features.E), dim=-1)
+        #extra_y = torch.cat((noisy_data.y, extra_features.y, extra_molecular_features.y), dim=-1)
+        bs = noisy_data.X.shape[0]
+        n = noisy_data.X.shape[1]
+        extra_y = torch.cat((noisy_data.y, torch.zeros(bs,12,device=device)), dim=-1)
+        # except:
+        #     log.info("Couldn't calculate the extra features for some reason")
+        # bs = noisy_data.X.shape[0]
+        # n = noisy_data.X.shape[1]
+        # device = noisy_data.X.device
+        # extra_features = noisy_data.get_new_object(X=torch.zeros(bs,n,8,device=device), E=torch.zeros(bs,n,n,0, device=device), y=torch.zeros(bs,12,device=device))
+        # # extra_molecular_features = noisy_data.get_new_object()
+        # extra_X = torch.cat((noisy_data.X, extra_features.X), dim=-1) 
+        # extra_E = torch.cat((noisy_data.E, extra_features.E), dim=-1)
+        # extra_y = torch.cat((noisy_data.y, extra_features.y), dim=-1)
 
         # extra_features.X = extra_features.X.detach() # don't allow backpropagation through these, it doesn't work
         # extra_features.E = extra_features.E.detach()

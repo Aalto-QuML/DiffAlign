@@ -7,10 +7,9 @@ import pathlib
 import os
 from collections import OrderedDict
 import torch # Must be done after setting CUDA_VISIBLE_DEVICES
-from diffalign_old.utils import setup
-from diffalign_old.datasets import supernode_dataset, supernode_dataset_16atomlabels, uspto_molecule_dataset, supernode_dataset_old
-from diffalign_old.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
-from diffalign_old.diffusion.diffusion_mol import DiscreteDenoisingDiffusionMol
+from diffalign import helpers
+from diffalign.datasets import reaction_dataset
+from diffalign.model.diffusion import DiscreteDenoisingDiffusionRxn
 parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -80,7 +79,7 @@ def create_model_from_config(cfg, device):
         model_class = DiscreteDenoisingDiffusionRxn
     else:
         assert 'unknown task.'
-    datamodule, dataset_infos = setup.get_dataset(cfg, data_class, shuffle=True, 
+    datamodule, dataset_infos = helpers.get_dataset(cfg, data_class, shuffle=True, 
                                                   return_datamodule=True, recompute_info=False)
     
     model_kwargs = {'dataset_infos': dataset_infos, 

@@ -27,7 +27,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 from hydra.experimental import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
-from diffalign_old.utils import wandb_utils
+from diffalign.helpers import wandb_utils
 
 # os.environ['WANDB_SERVICE_WAIT'] = 1000
 

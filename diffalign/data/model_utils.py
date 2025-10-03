@@ -1,9 +1,13 @@
 import torch.nn as nn
-from diffalign_old.neuralnet.transformer_model import GraphTransformer
-from diffalign_old.neuralnet.transformer_model_with_y import GraphTransformerWithY, GraphTransformerWithYAndPosEmb, GraphTransformerWithYAtomMapPosEmb, GraphTransformerWithYAtomMapPosEmbInefficient, GraphTransformerWithYAtomMapPosEmbInefficientStereo, GraphTransformerWithYAtomMapPosEmbInefficientChargesSeparate
-from diffalign_old.neuralnet.transformer_model_stacked import GraphTransformerWithYStacked
-from diffalign_old.diffusion.noise_schedule import *
-from diffalign_old.neuralnet.transformer_for_all_features import GraphTransformerForAllFeatures
+import torch
+#from diffalign.model.transformer_model import GraphTransformer
+from diffalign.data import graph
+from diffalign.model.transformer_model_with_y import GraphTransformerWithY, GraphTransformerWithYAndPosEmb, GraphTransformerWithYAtomMapPosEmb, GraphTransformerWithYAtomMapPosEmbInefficient, GraphTransformerWithYAtomMapPosEmbInefficientStereo, GraphTransformerWithYAtomMapPosEmbInefficientChargesSeparate
+# from diffalign.model.transformer_model_stacked import GraphTransformerWithYStacked
+from diffalign.model.noise_schedule import *
+# from diffalign.model.transformer_for_all_features import GraphTransformerForAllFeatures
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 """This file gathers together some code for choosing the right model, transition, and positional encoding based on the configuration file"""
 

@@ -8,7 +8,8 @@ from torch.nn import functional as F
 from torch import Tensor
 import numpy as np
 import random
-from diffalign_old.utils.diffusion import helpers
+from diffalign.model.diffusion import *
+import diffalign.model.diffusion_helpers as helpers
 import math
 
 

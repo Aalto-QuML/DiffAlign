@@ -38,7 +38,8 @@ dataset:
     use_stereochemistry: true
     use_charges_as_features: false
     atom_charges: []
-
+    use_aromatic_bond: false
+    
 neuralnet:
     extra_features: false
     increase_y_dim_for_multigpu: false

@@ -21,15 +21,17 @@ class ReactionDataset(InMemoryDataset):
         self.stage = stage
         self.file_idx = ['train', 'test', 'val'].index(self.stage)
         super().__init__(self.root, transform, pre_transform, pre_filter)
-        self.load(self.processed_paths[self.file_idx])
+        self.data, self.slices = torch.load(self.processed_paths[self.file_idx])
+        print(f'Loaded {len(self.data)} graphs for {self.stage} set.')
 
     def get_dataset_information(self):
         '''
             Return information to process the dataset.
         '''
         # upload information
+        atom_types_path = self.cfg.dataset.atom_types_charged_path if self.cfg.dataset.with_formal_charge_in_atom_symbols else self.cfg.dataset.atom_types_path
         atom_types = [a.strip() for a in open(os.path.join(self.root, 'processed',
-                                            self.cfg.dataset.atom_types_path),
+                                            atom_types_path),
                                             'r', encoding='utf-8').readlines()]
         atom_charges = [a.strip() for a in open(os.path.join(self.root, 'processed',
                                             self.cfg.dataset.atom_charges_path),

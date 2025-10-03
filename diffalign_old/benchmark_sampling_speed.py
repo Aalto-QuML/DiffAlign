@@ -12,7 +12,7 @@ import hydra
 import logging
 import copy
 import torch_geometric
-from diffalign_old.utils import graph
+from diffalign.data import graph
 
 # A logger for this file
 log = logging.getLogger(__name__)

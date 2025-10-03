@@ -8,7 +8,7 @@ from typing import List, Optional, Any, Tuple
 import os
 import pathlib
 import copy
-from diffalign_old.utils import graph
+from diffalign.data import graph
 from rdkit.Chem.rdchem import BondType as BT
 from rdkit.Chem import rdChemReactions as Reactions
 from rdkit.Chem import Draw
@@ -19,10 +19,12 @@ from rdkit.Chem import rdmolops
 from rdkit.Chem import AllChem
 from torch_geometric.data import Data
 import logging
+from diffalign.helpers import PROJECT_ROOT
+from diffalign.model import data_utils
 
 log = logging.getLogger(__name__)
 from PIL import Image, ImageDraw, ImageFont
-from diffalign_old.utils import data_utils
+from diffalign.data import *
 
 ATOM_VALENCY = {6: 4, 7: 3, 8: 2, 9: 1, 15: 3, 16: 2, 17: 1, 35: 1, 53: 1}
 
@@ -63,6 +65,142 @@ rdkit_atom_chiral_tags = [
 
 parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def get_best_matching(mol1, mol2):
+    matches = get_all_matches(mol1, mol2)
+    if not matches:
+        return None
+    scores = [score_matching(mol1, mol2, match) for match in matches]
+    return matches[scores.index(max(scores))]
+
+def aggregate_matchings(mol_list):
+    if not mol_list:
+        return []
+
+    n_atoms = mol_list[0].GetNumAtoms()
+    aggregated_mappings = [defaultdict(int) for _ in range(n_atoms)]
+    
+    # First, aggregate the atom mappings from all molecules
+    for mol in mol_list:
+        for i in range(n_atoms):
+            atom = mol.GetAtomWithIdx(i)
+            map_num = atom.GetAtomMapNum()
+            if map_num != 0:
+                aggregated_mappings[i][map_num] += 1
+    
+    # Then, aggregate matchings between pairs of molecules
+    for i in range(len(mol_list)):
+        for j in range(i+1, len(mol_list)):
+            matching = get_best_matching(mol_list[i], mol_list[j])
+            if matching:
+                for k, l in enumerate(matching):
+                    atom_i = mol_list[i].GetAtomWithIdx(k)
+                    atom_j = mol_list[j].GetAtomWithIdx(l)
+                    map_i = atom_i.GetAtomMapNum()
+                    map_j = atom_j.GetAtomMapNum()
+                    
+                    if map_i != 0:
+                        aggregated_mappings[k][map_i] += 1
+                    if map_j != 0:
+                        aggregated_mappings[l][map_j] += 1  # Note the change from k to l here
+    
+    return aggregated_mappings
+
+def get_unique_most_likely_mappings(aggregated_mappings):
+    n_atoms = len(aggregated_mappings)
+    most_likely_mappings = [0] * n_atoms
+    used_mappings = set()
+    
+    # Sort atom indices by the maximum likelihood of their mappings
+    sorted_indices = sorted(range(n_atoms), 
+                            key=lambda i: max(aggregated_mappings[i].values()) if aggregated_mappings[i] else 0, 
+                            reverse=True)
+    
+    for idx in sorted_indices:
+        if not aggregated_mappings[idx]:
+            continue
+        
+        # Sort mappings by likelihood
+        sorted_mappings = sorted(aggregated_mappings[idx].items(), key=lambda x: x[1], reverse=True)
+        
+        # Assign the most likely unused mapping
+        for mapping, _ in sorted_mappings:
+            if mapping not in used_mappings:
+                most_likely_mappings[idx] = mapping
+                used_mappings.add(mapping)
+                break
+        
+        # If no unused mapping found, assign 0 (unmapped)
+        if most_likely_mappings[idx] == 0:
+            print(f"Warning: Could not assign unique mapping for atom {idx}")
+    
+    return most_likely_mappings
+
+def resolve_atom_mappings(smiles_list):
+    mol_list = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
+    
+    if all(mol is None for mol in mol_list):
+        print("Error: No valid molecules found in the input list.")
+        return None, None
+    
+    aggregated_mappings = aggregate_matchings(mol_list)
+    most_likely_mappings = get_unique_most_likely_mappings(aggregated_mappings)
+    
+    # Apply the most likely mappings to all molecules
+    for mol in mol_list:
+        for i, mapping in enumerate(most_likely_mappings):
+            mol.GetAtomWithIdx(i).SetAtomMapNum(mapping)
+    
+    return mol_list, most_likely_mappings
+
+def get_possible_valences(atom_type):
+    # TODO: is this buggy somehow?
+    pt = Chem.GetPeriodicTable()
+    try:
+        valence_list = pt.GetValenceList(atom_type)
+    except:
+        valence_list = [0]
+
+    return list(valence_list)
+
+def get_rdkit_bond_types(bond_types):
+    """
+    Add the bond types to the list of bond types.
+    """
+    new_bond_types = []
+
+    for b in bond_types:
+        if b == "SINGLE":
+            new_bond_types.append(BT.SINGLE)
+        elif b == "DOUBLE":
+            new_bond_types.append(BT.DOUBLE)
+        elif b == "TRIPLE":
+            new_bond_types.append(BT.TRIPLE)
+        elif b == "AROMATIC":
+            new_bond_types.append(BT.AROMATIC)
+        else:
+            new_bond_types.append(b)
+
+    return new_bond_types
+
+def get_bond_orders_wrong(bond_types):
+    """
+    Get the bond orders from the bond types.
+    """
+    bond_orders = []
+    for b in bond_types:
+        if b == BT.SINGLE:
+            bond_orders.append(1)
+        if b == BT.DOUBLE:
+            bond_orders.append(2)
+        if b == BT.TRIPLE:
+            bond_orders.append(3)
+        if b == BT.AROMATIC:
+            bond_orders.append(1.5)
+        else:
+            bond_orders.append(0)
+
+    return bond_orders
 
 def get_smiles_like_diffalign_output(smiles: str) -> str:
     '''
@@ -161,48 +299,7 @@ def remove_charges_from_smiles(smi):
 #     return new_rxn_smi
 
 
-def get_rdkit_bond_types(bond_types):
-    """
-    Add the bond types to the list of bond types.
-    """
-    new_bond_types = []
-
-    for b in bond_types:
-        if b == "SINGLE":
-            new_bond_types.append(BT.SINGLE)
-        elif b == "DOUBLE":
-            new_bond_types.append(BT.DOUBLE)
-        elif b == "TRIPLE":
-            new_bond_types.append(BT.TRIPLE)
-        elif b == "AROMATIC":
-            new_bond_types.append(BT.AROMATIC)
-        else:
-            new_bond_types.append(b)
-
-    return new_bond_types
-
-
 def get_bond_orders(bond_types):
-    """
-    Get the bond orders from the bond types.
-    """
-    bond_orders = []
-    for b in bond_types:
-        if b == BT.SINGLE:
-            bond_orders.append(1)
-        if b == BT.DOUBLE:
-            bond_orders.append(2)
-        if b == BT.TRIPLE:
-            bond_orders.append(3)
-        if b == BT.AROMATIC:
-            bond_orders.append(1.5)
-        else:
-            bond_orders.append(0)
-
-    return bond_orders
-
-
-def get_bond_orders_correct(bond_types):
     """
     Get the bond orders from the bond types.
     """
@@ -228,15 +325,14 @@ def get_rdkit_chiral_tags(chiral_tags):
 
     # TODO: could add more types here
     for tag in chiral_tags:
-        if tag == "ccw":
+        if tag == "CHI_TETRAHEDRAL_CCW":
             rdkit_chiral_tags.append(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
-        elif tag == "cw":
+        elif tag == "CHI_TETRAHEDRAL_CW":
             rdkit_chiral_tags.append(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
         else:
             rdkit_chiral_tags.append(Chem.ChiralType.CHI_UNSPECIFIED)
 
     return rdkit_chiral_tags
-
 
 def get_rdkit_bond_dirs(bond_dirs):
     rdkit_bond_dirs = []
@@ -493,7 +589,7 @@ def order_of_pair_of_indices_in_cycle(idx1, idx2, cycle):
     raise ValueError("The indices are not in the cycle")
 
 
-from diffalign_old.utils import mol
+from diffalign.data import mol
 import copy
 
 
@@ -1315,13 +1411,23 @@ def get_cano_smiles_from_dense_with_stereochem(
     """
     wrapper for get_cano_smiles_from_dense_stereochem_, turns the dense_data object into a list of smiles.
     """
+    bond_types = ['none', BT.SINGLE, BT.DOUBLE, BT.TRIPLE, 'mol', 'within', 'across']
+    chiral_tags = [c.strip() for c in open(os.path.join(PROJECT_ROOT, 'dataset',
+                                                        cfg.dataset.data_dir, 'processed',
+                                                        'atom_chiral_tags.txt'), 'r').read().splitlines()]
+    atom_chiral_tags = mol.get_rdkit_chiral_tags(chiral_tags)
+    bond_dirs = [b.strip() for b in open(os.path.join(PROJECT_ROOT, 'dataset', 
+                                                        cfg.dataset.data_dir, 'processed', 
+                                                        'bond_dirs.txt'), 'r').read().splitlines()]
+    bond_dirs = mol.get_rdkit_bond_dirs(bond_dirs)
+    atom_charges = ['+', '-', '0']
     gen_rxn_smiles = get_cano_smiles_from_dense_with_stereochem_(
         dense_data,
         rdkit_atom_types=cfg.dataset.atom_types,
-        rdkit_bond_types=get_rdkit_bond_types(cfg.dataset.bond_types),
-        rdkit_atom_charges=cfg.dataset.atom_charges,
-        rdkit_atom_chiral_tags=get_rdkit_chiral_tags(cfg.dataset.atom_chiral_tags),
-        rdkit_bond_dirs=get_rdkit_bond_dirs(cfg.dataset.bond_dirs),
+        rdkit_bond_types=get_rdkit_bond_types(bond_types),
+        rdkit_atom_charges=atom_charges,
+        rdkit_atom_chiral_tags=get_rdkit_chiral_tags(atom_chiral_tags),
+        rdkit_bond_dirs=get_rdkit_bond_dirs(bond_dirs),
         return_dict=return_dict,
         plot_dummy_nodes=cfg.test.plot_dummy_nodes,
         use_stereochemistry=cfg.dataset.use_stereochemistry,

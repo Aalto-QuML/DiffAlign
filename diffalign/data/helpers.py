@@ -246,7 +246,7 @@ def rxn_diagnostic_chains(chains, atom_types, bond_types, chain_name='default'):
     return [(os.path.join(os.getcwd(), f'{chain_name}_chain{c}_mol{m}.mp4'), os.path.join(os.getcwd(), f'chain{c}_mol{m}.png'), Chem.MolToSmiles(sampled_mols[c][m][-1])) for c in writers.keys() for m in range(len(writers[c]))]
 
 
-def get_formal_charge_as_str(formal_charge):
+def get_formal_charge_as_str(formal_charge, no_charge_str=''):
     '''
         Get the formal charge as a string.
     '''
@@ -255,7 +255,7 @@ def get_formal_charge_as_str(formal_charge):
     elif formal_charge < 0:
         formal_charge_str = '-' + str(abs(formal_charge))
     else:
-        formal_charge_str = '0'
+        formal_charge_str = no_charge_str
     return formal_charge_str
 
 def get_reactant_and_product_from_reaction_smiles(reaction_smiles, return_as_str=False):
@@ -374,7 +374,7 @@ def mol_to_graph_with_stereochem_(
     atom_charges = F.one_hot(
         torch.tensor(
             [
-                rdkit_atom_charges.index(get_formal_charge_as_str(atom.GetFormalCharge()))
+                rdkit_atom_charges.index(get_formal_charge_as_str(atom.GetFormalCharge(), no_charge_str='0'))
                 for atom in mol_input.GetAtoms()
             ]
         ),
@@ -548,6 +548,14 @@ def split_reaction_graph_to_reactants_and_products(graph_data):
 #     products_graph['edge_index'] = products_graph['edge_index'] - reactants_graph['x'].shape[0] - dummy_nodes.shape[0]
 #     return reactants_graph, products_graph
 
+def split_atom_symbol_from_formal_charge(atom_symbol):
+    # split with regex
+    if '+' in atom_symbol or '-' in atom_symbol:
+        atom_symbol, atom_charge = re.split("[-+]", atom_symbol)
+    else:
+        atom_charge = 0
+    return atom_symbol, int(atom_charge)
+
 def graph_to_smiles_with_stereochem(graph_data, cfg, dataset_information):
     atom_types = dataset_information['atom_types']
     atom_charges = dataset_information['atom_charges']
@@ -560,8 +568,11 @@ def graph_to_smiles_with_stereochem(graph_data, cfg, dataset_information):
     # add atoms 
     for i, atom in enumerate(graph_data['x']):
         atom_symbol = atom_types[atom.argmax().item()]
+        if cfg.dataset.with_formal_charge_in_atom_symbols:
+            atom_symbol, atom_charge = split_atom_symbol_from_formal_charge(atom_symbol)
+        else:
+            atom_charge = atom_charges[graph_data['atom_charges'][i].argmax().item()]
         atom = Chem.Atom(atom_symbol)
-        atom_charge = atom_charges[graph_data['atom_charges'][i].argmax().item()]
         atom.SetFormalCharge(int(atom_charge))
         atom.SetChiralTag(chiral_tags[graph_data['atom_chiral'][i].argmax().item()])
         rw_mol.AddAtom(atom)
