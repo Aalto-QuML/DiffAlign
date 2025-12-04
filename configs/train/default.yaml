@@ -1,0 +1,49 @@
+# Training settings
+epochs: 10
+batch_size: 10
+batch_by_size: False
+size_bins:
+  test:
+  - 250
+  train:
+  - 64
+  - 83
+  - 102
+  - 140
+  val:
+  - 250
+batchsize_bins:
+  test:
+  - 32
+  train:
+  - 16
+  - 16
+  - 16
+  - 16
+  val:
+  - 32
+loss: 'ce'
+seed: 0
+log_to_wandb: False
+lr: 0.0002
+clip_grad: null # float, null to disable
+save_model: True
+num_workers: 0
+ema_decay: 0 # 'Amount of EMA decay, 0 means off. A reasonable value is 0.999.'
+progress_bar: false
+weight_decay: 1e-12
+optimizer: adamw # adamw,nadamw,nadam => nadamw for large batches, see http://arxiv.org/abs/2102.06356 for the use of nesterov momentum with large batches
+amsgrad: true
+overfit: falsesac
+log_every_t: 50
+chains_to_save: 1
+eval_every_epoch: 20
+samples_to_generate: 100
+best_model_criterion: 'top-5'
+save_every_epoch: False
+save_models_at_all: True
+lr_scheduler: 'none' # 'none', 'linear', 'cosine'
+initial_lr: 0.00001 # Used for warmup in the beginning of training 
+final_lr: 1e-5 # The final learning rate, used only if lr_scheduler is not 'none'
+num_annealing_epochs: 10 # This probably should be equal to the number of epochs usually
+num_warmup_epochs: 2

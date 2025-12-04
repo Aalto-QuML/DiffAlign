@@ -1,0 +1,25 @@
+with_denoising: True
+smiles_accuracy: True
+chains_to_save: 1
+size_test_splits: 100
+batch_size: 128
+n_samples: 1
+condition_first: 0 # The start of the overall condition range in a sampling run
+condition_index: 0 # the index of a condition range in the current job, in relation to condition_first. See sample_array_job for details
+condition_steps: null
+n_conditions: 1
+n_samples_per_condition: 1
+wandb_log_samples: True
+full_dataset: False
+testfile: None
+topks: [1, 3, 5, 10, 50, 100]
+loss_0_repeat: 1
+repeat_elbo: 1
+elbo_samples: 2
+eval_before_first_epoch: False
+plot_dummy_nodes: True
+plot_rxn_chains: True
+wandb_run_name: ''
+wandb_run_config: ''
+sort_lambda_value: 0.9 # 1 corresponds to no effect from the counts, 0 corresponds to no effect from ELBO when sorting
+total_cond_eval: null

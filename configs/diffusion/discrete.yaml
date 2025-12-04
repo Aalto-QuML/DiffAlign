@@ -1,0 +1,23 @@
+diffuse_edges: True
+diffuse_nodes: True
+mask_nodes: 'product_and_sn' # sn, reactant, product_and_sn, reactant_and_sn, first_n, ring
+mask_edges: 'product_and_sn'
+node_states_to_mask: ['SuNo', 'none']
+edge_states_to_mask: ['mol', 'within', 'across']
+edge_conditional_set: 'test' # 'test' or 'train' or 'val'
+denoiser: 'neuralnet' # 'regular' or 'data' or 'random' or 'carbon'
+transition: 'marginal'                          # uniform or marginal
+diffusion_steps: 10
+diffusion_steps_eval: ${diffusion_steps}
+diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2' 
+lambda_train: [5, 0]
+lambda_test: 1
+ce_lambda: 0.01 # used with loss vb+ce
+num_node_steps : 1 # Used when transition='nodes_before_edges'. Indicates how many of the steps are used for generating nodes
+temperature_scaling_node: 1.0
+temperature_scaling_edge: 1.0
+classifier_free_guidance: False
+classifier_free_uncond_prob: 0.1
+classifier_free_guidance_weight: 0.1
+classifier_free_full_unconditioning: False # If True, then the unconditioning is done properly with the positional encodings as well: They are zeroed outslurm/evaluate_classifier_free_guidance_weight.py
+classifier_free_drop_within_batch: False

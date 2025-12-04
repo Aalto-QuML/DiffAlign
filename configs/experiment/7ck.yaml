@@ -32,7 +32,6 @@ test:
   eval_before_first_epoch: false
   n_samples_per_condition: 100
   rep_samples_per_condition: 1
-  inpaint_on_one_reactant: false
 
 train:
   lr: 0.0002
@@ -86,11 +85,6 @@ train:
   samples_to_generate: 4
   best_model_criterion: top-5
   num_annealing_epochs: 10
-  resume: false
-  resume_checkpoint_path: null
-
-evaluate:
-  checkpoint_path: null
 
 dataset:
   name: uspto-50k
@@ -234,14 +228,6 @@ dataset:
   with_formal_charge: true
   add_supernode_edges: true
   canonicalize_molecule: true
-  atom_charges:
-    - +
-    - -
-    - 0
-  use_stereochemistry: false
-  add_supernodes: false
-  with_formal_charge_in_atom_symbols: true
-  use_aromatic_bond: false
 
 general:
   gpus: 1
@@ -249,91 +235,3 @@ general:
   task: rxn
   wandb:
     mode: online
-    tags:
-      - default
-    group: default
-    entity: najwalb
-    nfiles: null
-    resume: false
-    run_id: null
-    project: retrodiffuser
-    run_name: null
-    load_run_config: null
-    sample_file_name: null
-    checkpoint_epochs: null
-    eval_sampling_steps: null
-  project: retrodiffuser
-  wandb_id: null
-  log_every_steps: 50
-  resume_from_last_n: 1
-
-diffusion:
-  denoiser: neuralnet
-  ce_lambda: 2
-  mask_edges: product_and_sn
-  mask_nodes: product_and_sn
-  transition: absorbing_masknoedge
-  lambda_test: 1
-  lambda_train:
-    - 5
-    - 0
-  diffuse_edges: true
-  diffuse_nodes: true
-  extra_features: true
-  num_node_steps: 1
-  diffusion_steps: 500
-  edge_states_to_mask:
-    - mol
-    - within
-    - across
-  node_states_to_mask:
-    - SuNo
-    - none
-  diffusion_steps_eval: 100
-  edge_conditional_set: val
-  classifier_free_guidance: false
-  diffusion_noise_schedule: cosine
-  temperature_scaling_edge: 1
-  temperature_scaling_node: 1
-  classifier_free_uncond_prob: 0.1
-  classifier_free_guidance_weight: 0.1
-  classifier_free_drop_within_batch: false
-  classifier_free_full_unconditioning: false
-  count_conditioning_gamma: 0
-
-neuralnet:
-  dropout: 0.2
-  use_ema: false
-  improved: false
-  n_layers: 9
-  ema_decay: 0.999
-  hidden_dims:
-    de: 64
-    dx: 256
-    dy: 64
-    n_head: 8
-    dim_ffE: 128
-    dim_ffX: 256
-    dim_ffy: 128
-  p_to_r_init: 1
-  architecture: with_y_atommap_number_pos_enc
-  #architecture: with_y_atommap_number_pos_enc_stereo
-  use_all_gpus: true
-  alignment_type: correct
-  extra_features: true
-  checkpoint_file: null
-  hidden_mlp_dims:
-    E: 128
-    X: 256
-    y: 128
-  input_alignment: false
-  load_checkpoint: false
-  pos_encoding_type: laplacian_pos_enc
-  num_lap_eig_vectors: 20
-  pos_emb_permutations: -1
-  atom_map_pos_encoding: false
-  p_to_r_skip_connection: true
-  increase_y_dim_for_multigpu: true
-  skip_connection_on_non_mapped_atoms: false
-
-experiment_group: 7ckmnkvc

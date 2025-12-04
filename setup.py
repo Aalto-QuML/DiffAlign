@@ -1,11 +1,12 @@
-from setuptools import setup, find_namespace_packages
-import os
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from setuptools import setup, find_packages
 
 setup(
-    name="diffalign",
-    version="0.1.0",
-    packages=find_namespace_packages(include=['diffalign*']),
-    package_dir={"": "."}
+    name='diffalign',
+    version='1.0.0',
+    url=None,
+    author='N.L',
+    author_email='najwa.laabid@aalto.fi',
+    description='Diffusion for retrosynthesis',
+    packages=find_packages(),
+    install_requires=['numpy >= 1.11.1', 'matplotlib >= 1.5.1']
 )

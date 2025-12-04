@@ -1,0 +1,158 @@
+# @package _global_
+dataset:
+  add_supernode_edges: true
+  batchsize_bins:
+    test:
+    - 64
+    train:
+    - 128
+    - 64
+    - 16
+    val:
+    - 64
+  canonicalize_molecule: true
+  datadir: data/uspto-50k
+  datadist_dir: data/uspto-50k
+  dataset_nb: dummy10
+  name: uspto-50k
+  nb_rct_dummy_nodes: 35
+  num_workers: 4
+  pin_memory: false
+  remove_h: false
+  shuffle: false
+  size_bins:
+    test:
+    - 250
+    train:
+    - 64
+    - 83
+    - 102
+    val:
+    - 250
+  with_explicit_h: false
+  with_formal_charge: true
+diffusion:
+  ce_lambda: 0.01
+  classifier_free_drop_within_batch: false
+  classifier_free_full_unconditioning: false
+  classifier_free_guidance: false
+  classifier_free_guidance_weight: 0.1
+  classifier_free_uncond_prob: 0.1
+  denoiser: neuralnet
+  diffuse_edges: true
+  diffuse_nodes: true
+  diffusion_noise_schedule: cosine
+  diffusion_steps: 10
+  edge_conditional_set: test
+  edge_states_to_mask:
+  - mol
+  - within
+  - across
+  lambda_test: 1
+  lambda_train:
+  - 0.01
+  - 0
+  mask_edges: product_and_sn
+  mask_nodes: product_and_sn
+  node_states_to_mask:
+  - SuNo
+  - none
+  num_node_steps: 1
+  temperature_scaling_edge: 1.0
+  temperature_scaling_node: 1.0
+  transition: marginal
+general:
+  gpus: 1
+  log_every_steps: 50
+  name: general
+  project: retrodiffuser
+  resume_from_last_n: 1
+  task: rxn
+  wandb:
+    checkpoint_epochs: null
+    entity: najwalb
+    group: default
+    mode: online
+    project: retrodiffuser
+    resume: false
+    run_id: 2z7h3qx5
+    run_name: download_config
+    tags:
+    - default
+neuralnet:
+  architecture: with_y
+  atom_map_pos_encoding: false
+  checkpoint_file: null
+  dropout: 0.1
+  ema_decay: 0.999
+  extra_features: false
+  hidden_dims:
+    de: 64
+    dim_ffE: 128
+    dim_ffX: 256
+    dim_ffy: 128
+    dx: 256
+    dy: 64
+    n_head: 8
+  hidden_mlp_dims:
+    E: 128
+    X: 256
+    y: 128
+  improved: false
+  increase_y_dim_for_multigpu: true
+  load_checkpoint: false
+  n_layers: 9
+  pos_emb_permutations: 0
+  pos_encoding_type: smiles_pos_enc
+  use_all_gpus: true
+  use_ema: false
+test:
+  batch_size: 128
+  chains_to_save: 1
+  elbo_samples: 2
+  eval_before_first_epoch: false
+  full_dataset: false
+  loss_0_repeat: 1
+  n_conditions: 1
+  n_samples: 1
+  n_samples_per_condition: 1
+  plot_dummy_nodes: true
+  plot_rxn_chains: true
+  repeat_elbo: 1
+  size_test_splits: 100
+  smiles_accuracy: true
+  sort_lambda_value: 0.9
+  testfile: None
+  topks:
+  - 10
+  wandb_log_samples: true
+  wandb_run_config: ''
+  wandb_run_name: ''
+  with_denoising: true
+train:
+  amsgrad: true
+  batch_size: 10
+  best_model_criterion: top-5
+  chains_to_save: 1
+  clip_grad: null
+  ema_decay: 0
+  epochs: 10
+  final_lr: 1.0e-05
+  initial_lr: 1.0e-05
+  log_every_t: 50
+  log_to_wandb: false
+  loss: ce
+  lr: 0.0002
+  lr_scheduler: none
+  num_annealing_epochs: 10
+  num_warmup_epochs: 2
+  num_workers: 0
+  optimizer: adamw
+  overfit: falsesac
+  progress_bar: false
+  samples_to_generate: 100
+  save_every_epoch: false
+  save_model: true
+  save_models_at_all: true
+  seed: 0
+  weight_decay: 1.0e-12

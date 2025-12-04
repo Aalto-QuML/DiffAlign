@@ -1,0 +1,4 @@
+# @package _global_
+general:
+  wandb: 
+    checkpoint_epochs: [5,9] # epoch num for the checkpoint to use (resume/sample from)

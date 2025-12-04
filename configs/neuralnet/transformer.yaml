@@ -1,0 +1,21 @@
+increase_y_dim_for_multigpu: True
+use_ema: False
+ema_decay: 0.999
+checkpoint_file: null
+extra_features: False
+load_checkpoint: False
+architecture: 'with_y'
+n_layers: null # 9
+hidden_mlp_dims: null # {'X': 256, 'E': 128, 'y': 128}
+hidden_dims : null # {'dx': 256, 'de': 64, 'dy': 64, 'n_head': 8, 'dim_ffX': 256, 'dim_ffE': 128, 'dim_ffy': 128}
+atom_map_pos_encoding: False
+pos_emb_permutations: 0
+pos_encoding_type: 'smiles_pos_enc' # smiles_pos_enc, laplacian_pos_enc, infoleak_pos_enc
+use_all_gpus: True
+improved: False
+dropout: 0.1
+num_lap_eig_vectors: 20
+input_alignment: False
+p_to_r_skip_connection: False
+p_to_r_init: 10.0
+alignment_type: "old" # "correct", "old"
