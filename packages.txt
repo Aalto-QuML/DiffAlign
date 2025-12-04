@@ -1,0 +1,13 @@
+torch
+torch_geometric
+torch_sparse
+torch_scatter
+torch_cluster 
+torch_spline_conv
+hydra-core
+wandb
+rdkit
+multiset
+seaborn
+pip install -e .
+fcd_torch

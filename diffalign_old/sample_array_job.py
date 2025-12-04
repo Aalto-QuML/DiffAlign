@@ -25,11 +25,11 @@ from diffalign_old.datasets import supernode_dataset, supernode_dataset_16atomla
 from diffalign_old.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 from diffalign_old.diffusion.diffusion_mol import DiscreteDenoisingDiffusionMol
 
-try:
-    from mpi4py import MPI
-except ImportError: # mpi4py is not installed, for local experimentation
-    MPI = None
-    log.warning("mpi4py not found. MPI will not be used.")
+# try:
+#     from mpi4py import MPI
+# except ImportError: # mpi4py is not installed, for local experimentation
+#     MPI = None
+#     log.warning("mpi4py not found. MPI will not be used.")
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -45,15 +45,15 @@ def main(cfg: DictConfig):
     orig_cfg = copy.deepcopy(cfg)
 
     # MPI related parameters (in case --ntasks>1)
-    if MPI:
-        comm = MPI.COMM_WORLD
-        mpi_size = comm.Get_size() # if not --ntasks>1, this will be 1
-        mpi_rank = comm.Get_rank() # this will be 0
-    else:
-        mpi_size = 1
-        mpi_rank = 0
-    # mpi_size = 8
-    # mpi_rank = 1
+    # if MPI:
+    #     comm = MPI.COMM_WORLD
+    #     mpi_size = comm.Get_size() # if not --ntasks>1, this will be 1
+    #     mpi_rank = comm.Get_rank() # this will be 0
+    # else:
+    #     mpi_size = 1
+    #     mpi_rank = 0
+    mpi_size = 1
+    mpi_rank = 0
     
     # whether we load new configs
     # load_from_wandb = cfg.general.wandb.resume or cfg.general.wandb.load_run_config

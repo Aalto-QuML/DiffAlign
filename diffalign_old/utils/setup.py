@@ -2,7 +2,6 @@ import os
 from copy import deepcopy
 from typing import Optional, Union, Dict
 from omegaconf import OmegaConf, open_dict
-from overrides import overrides
 import omegaconf
 import wandb
 import pathlib

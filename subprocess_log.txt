@@ -1,0 +1,4 @@
+2025-10-17 12:00:42,059 DEBUG matplotlib.pyplot Loaded backend macosx version unknown.
+2025-10-17 12:01:10,921 DEBUG hydra.core.utils Setting JobRuntime:name=UNKNOWN_NAME
+2025-10-17 12:01:10,921 DEBUG hydra.core.utils Setting JobRuntime:name=sample_array_job
+2025-10-17 12:01:11,137 DEBUG matplotlib.pyplot Loaded backend macosx version unknown.

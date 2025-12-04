@@ -16,6 +16,32 @@ from diffalign.data.chem_helpers import create_canonicalized_mol, get_atom_symbo
 from diffalign.data.rdkit_helpers import get_rdkit_chiral_tags, get_rdkit_bond_types, get_rdkit_bond_dirs
 from diffalign.data import graph
 
+def clear_atom_map(smi):
+    """
+    Clear atom map numbers from and canonicalize a SMILES string.
+
+    Args:
+        smi (str): SMILES string to clear atom map numbers from.
+
+    Returns:
+        str: Canonicalized SMILES string with atom map numbers cleared
+    """
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        #print(f'========== Invalid molecule: {smi}')
+        return smi
+    for atom in mol.GetAtoms():
+        atom.SetAtomMapNum(0)
+    return Chem.CanonSmiles(Chem.MolToSmiles(mol))
+
+def compare_reactant_smiles(smiles1, smiles2, return_reactants_canonicalized=False):
+    set1 = set([clear_atom_map(sm) for sm in smiles1.split('.')])
+    set2 = set([clear_atom_map(sm) for sm in smiles2.split('.')])
+    if return_reactants_canonicalized:
+        return set1 == set2, '.'.join(set1), '.'.join(set2)
+    else:
+        return set1 == set2
+
 def add_supernodes(cfg, data):
     """In case the data does not have a supernode as the first node of each molecule, we add it here. 
     Need to also update the mol_assignment, atom_map_numbers, and pos_encoding fields. 
@@ -745,6 +771,39 @@ def _check_if_difference_is_only_explicit_hydrogens(rxn_smi1, rxn_smi2):
         return False
     if reactants1 != reactants2:
         return False
+
+def get_dataset_information(self):
+    '''
+        Return information to process the dataset.
+    '''
+    # upload information
+    atom_types_path = self.cfg.dataset.atom_types_charged_path if self.cfg.dataset.with_formal_charge_in_atom_symbols else self.cfg.dataset.atom_types_path
+    atom_types = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        atom_types_path),
+                                        'r', encoding='utf-8').readlines()]
+    atom_charges = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        self.cfg.dataset.atom_charges_path),
+                                        'r', encoding='utf-8').readlines()]
+    atom_chiral_tags = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        self.cfg.dataset.atom_chiral_tags_path),
+                                        'r', encoding='utf-8').readlines()]
+    atom_types_charged = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        self.cfg.dataset.atom_types_charged_path),
+                                        'r', encoding='utf-8').readlines()]     
+    bond_types = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        self.cfg.dataset.bond_types_path),
+                                        'r', encoding='utf-8').readlines()]     
+    bond_dirs = [a.strip() for a in open(os.path.join(self.root, 'processed',
+                                        self.cfg.dataset.bond_dirs_path),
+                                        'r', encoding='utf-8').readlines()]
+    return {
+        'atom_types': atom_types,
+        'atom_charges': atom_charges,
+        'atom_chiral_tags': atom_chiral_tags,
+        'atom_types_charged': atom_types_charged,
+        'bond_types': bond_types,
+        'bond_dirs': bond_dirs
+    }
 
 def reaction_smiles_to_graph(cfg,
                              stage,

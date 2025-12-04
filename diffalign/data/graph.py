@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 from diffalign.data import graph
 from diffalign.data import mol
+from diffalign.helpers import PROJECT_ROOT
 import torch
 import torch.nn.functional as F
 from torch_geometric.utils import to_dense_adj, to_dense_batch, remove_self_loops, dense_to_sparse
@@ -871,7 +872,7 @@ def get_unique_indices_from_reaction_list(gen_rxn_smiles):
     # return PlaceHolder(X=X_unique, E=E_unique, y=y_unique, node_mask=node_mask_unique, 
     #                    atom_map_numbers=atom_map_numbers_unique, mol_assignment=mol_assignment_unique)
 
-def to_dense(data):
+def to_dense(data, cfg=None, smiles=None):
     X, node_mask = to_dense_batch(x=data.x, batch=data.batch)
     X = encode_no_element(X)
     
@@ -885,8 +886,16 @@ def to_dense(data):
         
     E = encode_no_element(E)
 
-    atom_map_numbers, mol_assignment, smiles, pos_encoding, atom_charges, atom_chiral, bond_dirs = None, None, None, None, None, None, None
+    #atom_map_numbers, mol_assignment, smiles, pos_encoding, atom_charges, atom_chiral, bond_dirs = None, None, None, None, None, None, None
+    atom_map_numbers = torch.zeros(X.shape[0], X.shape[1], dtype=torch.int64)
+    mol_assignment = torch.zeros(X.shape[0], X.shape[1], dtype=torch.int64)
+
+    atom_charges = torch.zeros(X.shape[0], X.shape[1], 3, dtype=torch.float32)
+    atom_chiral = torch.zeros(X.shape[0], X.shape[1], 3, dtype=torch.float32)
+    bond_dirs = torch.zeros(E.shape[0], E.shape[1], E.shape[2], 3,dtype=torch.float32)
     keys =  data.keys if type(data.keys)==dict or type(data.keys)==list else data.keys() # TODO: This seems quite hacky at the moment
+    pos_encoding = None
+    smiles = ['']*X.shape[0]
     # if 'atom_map_numbers' in keys:
     #     # atom_map_numbers, _ = to_dense_batch(x=data.mask_atom_mapping, batch=data.batch)
     #     atom_map_numbers = data.atom_map_numbers # were these of this shape? -> let's check
@@ -912,7 +921,7 @@ def to_dense(data):
         bond_dirs = to_dense_adj(edge_index=edge_index, batch=data.batch, 
                                  edge_attr=bond_dirs, max_num_nodes=max_num_nodes)
         bond_dirs = encode_no_element(bond_dirs)
-        
+    
     return PlaceHolder(X=X, E=E, y=data.y, node_mask=node_mask, atom_map_numbers=atom_map_numbers, mol_assignment=mol_assignment, 
                         atom_charges=atom_charges, atom_chiral=atom_chiral, bond_dirs=bond_dirs, pos_encoding=pos_encoding, smiles=smiles)
 
