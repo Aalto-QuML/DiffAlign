@@ -1,5 +1,6 @@
 # directories
 data/
+checkpoints/
 dataset/
 checkpoints/
 outputs/
