@@ -8,7 +8,7 @@ edge_conditional_set: 'test' # 'test' or 'train' or 'val'
 denoiser: 'neuralnet' # 'regular' or 'data' or 'random' or 'carbon'
 transition: 'marginal'                          # uniform or marginal
 diffusion_steps: 10
-diffusion_steps_eval: ${diffusion_steps}
+diffusion_steps_eval: ${.diffusion_steps}
 diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2' 
 lambda_train: [5, 0]
 lambda_test: 1

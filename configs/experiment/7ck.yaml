@@ -1,4 +1,29 @@
 # @package _global_
+neuralnet:
+  dropout: 0.2
+  use_ema: false
+  improved: false
+  n_layers: 9
+  ema_decay: 0.999
+  hidden_dims:
+    de: 64
+    dx: 256
+    dy: 64
+    n_head: 8
+    dim_ffE: 128
+    dim_ffX: 256
+    dim_ffy: 128
+  p_to_r_init: 1
+  architecture: with_y_atommap_number_pos_enc
+  use_all_gpus: true
+  alignment_type: correct
+  extra_features: true
+  checkpoint_file: null
+  hidden_mlp_dims:
+    E: 128
+    X: 256
+    y: 128
+
 test:
   topks:
     - 1
@@ -88,7 +113,7 @@ train:
 
 dataset:
   name: uspto-50k
-  datadir: data/uspto-50k
+  datadir: data/uspto-50k-block-15-severilocal
   shuffle: true
   remove_h: false
   size_bins:
@@ -134,7 +159,7 @@ dataset:
   dataset_nb: block-15
   pin_memory: false
   num_workers: 0
-  datadist_dir: data/uspto-50k
+  datadist_dir: data/uspto-50k-block-15-severilocal
   dataset_size:
     val: 4951
     test: 4949
@@ -234,4 +259,4 @@ general:
   name: rxn_absorbing_masknoedge_dummy15_loss_ce_laplacian_pos_encnum_gpus_1_fancybatching_16_diffusionsteps500_num_ev_20_p_to_r_skipinput_alignment_correct_wd0.001_drop0.2-seed2
   task: rxn
   wandb:
-    mode: online
+    mode: offline
