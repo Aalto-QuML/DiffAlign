@@ -9,35 +9,7 @@ The processed data can be downloaded from [this link](https://figshare.com/artic
 # Training the model
 To train our best model, run the following command:
 ```
-python3 src/train.py 
-    +experiment=7ck 
-    neuralnet.architecture='with_y_atommap_number_pos_enc'
-    dataset.dataset_nb='dummy15-skipconnection' 
-    dataset.merge_only=False
-    dataset.chunk_idx=0 
-    dataset.fix_atom_mappings=False
-    dataset.recalculate_atom_maps=False
-    dataset.num_processes=10 
-    neuralnet.alignment_type=correct
-    train.epochs=1000 
-    general.wandb.resume=False
-    general.wandb.run_id=null 
-    diffusion.diffusion_steps=100
-    diffusion.diffusion_steps_eval=10
-    train.eval_every_epoch=20
-    neuralnet.input_alignment=False
-    neuralnet.pos_encoding_type='laplacian_pos_enc'
-    diffusion.ce_lambda=2.0
-    train.weight_decay=1e-4 
-    neuralnet.dropout=0.2
-    neuralnet.p_to_r_skip_connection=True 
-    diffusion.transition=absorbing_masknoedge
-    neuralnet.num_lap_eig_vectors=20 
-    train.log_every_t=50 
-    train.loss=ce 
-    neuralnet.p_to_r_init=1.0 
-    train.max_nodes_for_training=200
-    hydra.run.dir=experiments/your_experiment_name/
+python3 scripts/train.py +experiment=align_absorbing
 ```
 
 # Generating samples
