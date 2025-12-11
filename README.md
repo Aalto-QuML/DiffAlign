@@ -2,16 +2,16 @@
 
 This the official implementation of the DiffAlign model as seen in [Equivariant Denoisers Cannot Copy Graphs: Align Your Graph Diffusion Models](https://openreview.net/forum?id=onIro14tHv&referrer=%5Bthe%20profile%20of%20Najwa%20Laabid%5D(%2Fprofile%3Fid%3D~Najwa_Laabid1))
 
-# Obtaining processed data and checkpoints
+## Obtaining processed data and checkpoints
 The processed data can be downloaded from [this link](https://figshare.com/articles/dataset/Processed_USPTO-50k_data_as_graphs_for_DiffAlign/30787127?file=60100430). The checkpoint for our best model (aligned with absorbing transition) can be found [here](https://figshare.com/articles/online_resource/DiffAlign_aligned_absorbing_state_checkpoint/30787181).
 
-# Training the model
+## Training the model
 To train our best model, run the following command:
 ```
 python3 scripts/train.py +experiment=align_absorbing
 ```
 
-# Generating samples
+## Generating samples
 Run the following script to generate samples similar to the ones used in the results (Table ...).
 ´your_experiment_name´ is the name of the experiment where you want to save the samples.
 Alternatively, you can obtain the exact samples used in the paper in this link. 
@@ -38,7 +38,7 @@ python3 src/sample_array_job.py
 		 dataset.num_workers=0
 ```
 
-# Evaluating samples
+## Evaluating samples
 To evaluate samples, run the following command. Make sure ´your_experiment_name´ is the name of the experiment where you saved the samples earlier.
 ```
 python3 src/evaluate_array_job.py
@@ -63,7 +63,7 @@ python3 src/evaluate_array_job.py
 		 dataset.num_workers=0
 ```
 
-# Citation
+## Citation
 ```
 @inproceedings{
 laabid2025equivariant,
