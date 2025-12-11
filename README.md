@@ -1,8 +1,12 @@
-<div align="center">
-	<img align="center" src="logo.png" width="350px" />
+
+<div>
+<img align="left" src="logo.png" width="350px" />
+<h3><i>DiffAlign</i></h3>
 </div>
 
-This the official implementation of the DiffAlign model as seen in [Equivariant Denoisers Cannot Copy Graphs: Align Your Graph Diffusion Models](https://openreview.net/forum?id=onIro14tHv&referrer=%5Bthe%20profile%20of%20Najwa%20Laabid%5D(%2Fprofile%3Fid%3D~Najwa_Laabid1))
+<div style="clear: both;"></div>
+
+This the official implementation of the DiffAlign model as seen in <a href="https://openreview.net/forum?id=onIro14tHv">Equivariant Denoisers Cannot Copy Graphs: Align Your Graph Diffusion Models</a>
 
 ## Obtaining processed data and checkpoints
 The processed data can be downloaded from [this link](https://figshare.com/articles/dataset/Processed_USPTO-50k_data_as_graphs_for_DiffAlign/30787127?file=60100430). The checkpoint for our best model (aligned with absorbing transition) can be found [here](https://figshare.com/articles/online_resource/DiffAlign_aligned_absorbing_state_checkpoint/30787181).
