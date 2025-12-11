@@ -1,4 +1,4 @@
-# DiffAlign
+<img align="center" src="logo.pdf" width="350px" />
 
 This the official implementation of the DiffAlign model as seen in [Equivariant Denoisers Cannot Copy Graphs: Align Your Graph Diffusion Models](https://openreview.net/forum?id=onIro14tHv&referrer=%5Bthe%20profile%20of%20Najwa%20Laabid%5D(%2Fprofile%3Fid%3D~Najwa_Laabid1))
 
