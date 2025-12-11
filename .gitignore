@@ -6,6 +6,8 @@ checkpoints/
 outputs/
 experiments/
 poster/
+jobs/
+output/
 
 # cache
 __pycache__/

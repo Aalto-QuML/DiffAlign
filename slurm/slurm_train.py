@@ -38,6 +38,6 @@ script_args = {"script_dir": SCRIPT_DIR,
                 },
                 "variables": {}}
 script_args['script_name'] = 'train.py'
-slurm_args['job_name'] = 'train_' + experiment_file
-slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], f'train{experiment_file}')
+slurm_args['job_name'] = 'train_' + experiment_file + '_' + time_stamp
+slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], f'train_{experiment_file}')
 output = create_and_submit_batch_job(slurm_args, script_args, interactive=slurm_args['interactive'])
