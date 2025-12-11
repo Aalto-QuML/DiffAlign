@@ -1,10 +1,5 @@
 
-<div>
-<img align="left" src="logo.png" width="350px" />
-<h3><i>DiffAlign</i></h3>
-</div>
-
-<div style="clear: both;"></div>
+<img src="logo.png" width="350px" />
 
 This the official implementation of the DiffAlign model as seen in <a href="https://openreview.net/forum?id=onIro14tHv">Equivariant Denoisers Cannot Copy Graphs: Align Your Graph Diffusion Models</a>
 
