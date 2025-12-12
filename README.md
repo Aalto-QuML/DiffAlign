@@ -1,5 +1,5 @@
 
-<img align="left" src="logo.png" width="350px" />
+<img align="center" src="logo.png" width="350px" />
 
 <div style="clear: both;"></div>
 
