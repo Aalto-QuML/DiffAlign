@@ -4,7 +4,7 @@ diffusion:
   ce_lambda: 2
   mask_edges: "product_and_sn"
   mask_nodes: "product_and_sn"
-  transition: "absorbing_masknoedge"
+  transition: "marginal"
   lambda_test: 1
   lambda_train: [5, 0]
   diffuse_edges: true
@@ -49,7 +49,6 @@ neuralnet:
     E: 128
     X: 256
     y: 128
-  pos_encoding_type: laplacian_pos_enc
 
 test:
   topks:

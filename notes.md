@@ -1,3 +1,6 @@
+# Puhti info
+- DiffAlign: 2015607
+
 # Plan
 Options: 
 - Get the corresponding transition matrices from my thing and implement them as an StateTransition object in noise_schedule.py. Mainly the init could be that we pre-calculate all the transition matrices, and this requires some new code -> after that, smooth sailing?
