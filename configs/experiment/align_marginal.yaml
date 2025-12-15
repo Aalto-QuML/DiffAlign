@@ -4,7 +4,7 @@ diffusion:
   ce_lambda: 2
   mask_edges: "product_and_sn"
   mask_nodes: "product_and_sn"
-  transition: "absorbing_masknoedge"
+  transition: "marginal"
   lambda_test: 1
   lambda_train: [5, 0]
   diffuse_edges: true
@@ -49,7 +49,6 @@ neuralnet:
     E: 128
     X: 256
     y: 128
-  pos_encoding_type: laplacian_pos_enc
 
 test:
   topks:
@@ -61,7 +60,7 @@ test:
     - 100
   testfile: 0
   n_samples: 1
-  batch_size: 16
+  batch_size: 32
   repeat_elbo: 1
   elbo_samples: 32
   full_dataset: false
@@ -73,7 +72,7 @@ test:
   condition_first: 0
   condition_index: 0
   condition_steps: null
-  plot_rxn_chains: false
+  plot_rxn_chains: true
   smiles_accuracy: true
   total_cond_eval: null
   plot_dummy_nodes: false
@@ -120,14 +119,14 @@ train:
   batch_by_size: true
   batchsize_bins:
     val:
-      - 16
+      - 32
     test:
-      - 16
+      - 32
     train:
-      - 8
-      - 8
-      - 8
-      - 8
+      - 16
+      - 16
+      - 16
+      - 16
   chains_to_save: 4
   grad_every_step: 100
   eval_every_epoch: 20
@@ -267,14 +266,14 @@ dataset:
       - 3
   batchsize_bins:
     val:
-      - 16
+      - 32
     test:
-      - 16
+      - 32
     train:
-      - 8
-      - 8
-      - 8
-      - 8
+      - 16
+      - 16
+      - 16
+      - 16
   with_explicit_h: false
   nb_rct_dummy_nodes: 15
   with_formal_charge: true
