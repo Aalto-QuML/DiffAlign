@@ -34,7 +34,7 @@ test:
     - 100
   testfile: 0
   n_samples: 1
-  batch_size: 32
+  batch_size: 16
   repeat_elbo: 1
   elbo_samples: 32
   full_dataset: false
@@ -46,7 +46,7 @@ test:
   condition_first: 0
   condition_index: 0
   condition_steps: null
-  plot_rxn_chains: true
+  plot_rxn_chains: false
   smiles_accuracy: true
   total_cond_eval: null
   plot_dummy_nodes: false
@@ -93,14 +93,14 @@ train:
   batch_by_size: true
   batchsize_bins:
     val:
-      - 32
+      - 16
     test:
-      - 32
+      - 16
     train:
-      - 16
-      - 16
-      - 16
-      - 16
+      - 8
+      - 8
+      - 8
+      - 8
   chains_to_save: 4
   grad_every_step: 100
   eval_every_epoch: 20
@@ -240,14 +240,14 @@ dataset:
       - 3
   batchsize_bins:
     val:
-      - 32
+      - 16
     test:
-      - 32
+      - 16
     train:
-      - 16
-      - 16
-      - 16
-      - 16
+      - 8
+      - 8
+      - 8
+      - 8
   with_explicit_h: false
   nb_rct_dummy_nodes: 15
   with_formal_charge: true

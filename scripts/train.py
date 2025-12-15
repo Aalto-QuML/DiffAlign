@@ -4,6 +4,8 @@
 import time
 import os
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 import datetime
 import pathlib
 import warnings
@@ -75,8 +77,8 @@ def main(cfg: DictConfig):
                                                                                                       'use_data_parallel': torch.cuda.device_count() > 1 and cfg.neuralnet.use_all_gpus},
                                                                                         parent_path=parent_path, savedir=savedir, device=device,
                                                                                         device_count=torch.cuda.device_count())
-    
-    start_epoch = last_epoch+1
+    print(f'last_epoch: {last_epoch}')
+    start_epoch = last_epoch+1 if last_epoch is not None or last_epoch != 0 else 0
     model = model.to(device)
     assert start_epoch<cfg.train.epochs, f'start_epoch={start_epoch}<cfg.train.epochs={cfg.train.epochs}.'
     log.info(f'model {setup.count_parameters(model)}\n')
