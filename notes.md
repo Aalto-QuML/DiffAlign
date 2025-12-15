@@ -1,5 +1,5 @@
 # Puhti info
-- DiffAlign: 2015607
+- DiffAlign: cd /scratch/project_2015607/DiffAlign/
 
 # Plan
 Options: 
