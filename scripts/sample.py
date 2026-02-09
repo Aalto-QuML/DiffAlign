@@ -98,7 +98,6 @@ def main(cfg: DictConfig):
         data_slices = {'train': None, 'val': None, 'test': None}
         data_slices[cfg.diffusion.edge_conditional_set] = [int(condition_start_for_job), int(condition_start_for_job)+int(cfg.test.n_conditions)]
     print(f'data_slices {data_slices}\n')
-
     datamodule, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'], 
                                                   shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False, slices=data_slices)
     
@@ -115,14 +114,24 @@ def main(cfg: DictConfig):
     log.info(f": {cfg.general}")
     log.info(f": {cfg.general.wandb}")
 
+
     # 4. load the weights to the model
-    savedir = os.path.join(parent_path, "experiments", "trained_models", cfg.general.wandb.run_id)
+    savedir = os.path.join(parent_path, "checkpoints")
+    print(f'savedir {savedir}')
     model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch_num, savedir, model, optimizer, 
                                                                                                             scheduler, scaler, device_count=device_count)
     
     # 5. sample n_conditions and n_samples_per_condition
-    output_file_smiles = f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.txt'
-    output_file_pyg = f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
+    output_file_smiles = os.path.join(
+        parent_path, 
+        "experiments",
+        f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.txt'
+    )
+    output_file_pyg = os.path.join(
+        parent_path, 
+        "experiments",
+        f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
+    )
 
     if cfg.diffusion.edge_conditional_set=='test':
         dataloader = datamodule.test_dataloader()
@@ -136,7 +145,6 @@ def main(cfg: DictConfig):
     all_gen_rxn_smiles, all_true_rxn_smiles, all_gen_rxn_pyg, all_true_rxn_pyg = model.sample_n_conditions(
                                 dataloader=dataloader, epoch_num=epoch_num, device_to_use=None,  inpaint_node_idx=None, 
                                 inpaint_edge_idx=None)
-    
     # Save the results to a file
     for i in range(len(all_gen_rxn_smiles)):
         true_rxn_smiles = all_true_rxn_smiles[i]
@@ -145,6 +153,7 @@ def main(cfg: DictConfig):
         # gen_rxn_pyg = all_gen_rxn_pyg[i]
         true_rcts_smiles = [rxn.split('>>')[0].split('.') for rxn in true_rxn_smiles]
         true_prods_smiles = [rxn.split('>>')[1].split('.') for rxn in true_rxn_smiles]
+        print(f'saving to file {output_file_smiles}')
         graph.save_gen_rxn_smiles_to_file(output_file_smiles, condition_idx=condition_start_for_job+i, 
                                         gen_rxns=gen_rxn_smiles, true_rcts=true_rcts_smiles[0], true_prods=true_prods_smiles[0])
     # Save the sparse format generated graphs to a file (includes atom-mapping information) all_true_rxn_pyg

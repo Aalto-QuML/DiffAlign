@@ -5,6 +5,7 @@ task: 'rxn'
 resume_from_last_n: 1
 gpus: 1                     # Multi-gpu is not implemented on this branch
 log_every_steps: 50
+seed: 42
 wandb:
   entity: your_entity
   project: your_project

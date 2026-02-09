@@ -1,3 +1,7 @@
+# preparing rahti website
+- get sample to run for 1 molecule, 100 samples, time it on gpu and cpu
+    - run in interactive mode
+
 # Debug
 - the plotting with imageio ffpmeg on puhti
 
