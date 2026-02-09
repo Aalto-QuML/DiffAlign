@@ -1,3 +1,6 @@
+# Debug
+- the plotting with imageio ffpmeg on puhti
+
 # Puhti info
 - DiffAlign: cd /scratch/project_2015607/DiffAlign/
 

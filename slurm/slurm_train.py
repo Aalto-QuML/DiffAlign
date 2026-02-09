@@ -27,13 +27,12 @@ slurm_args.update({
 
 time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 experiment_file = 'align_absorbing'
-epochs = 1
+epochs = 2
 
 script_args = {"script_dir": SCRIPT_DIR,
                 "use_torchrun": 'false',
                 "args": {
                     '+experiment': experiment_file,
-                    'general.seed': seed,
                     'train.epochs': epochs,
                 },
                 "variables": {}}
