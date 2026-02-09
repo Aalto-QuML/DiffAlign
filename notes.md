@@ -1,3 +1,11 @@
+# Sample and Evaluate
+- Get scripts to work on puhti
+    - sample works for 1 sample 1 condition on gpu
+    - need to hook it with evaluate
+    - also need to build an interface to abstract this for rahti
+- Refactor sample to simplify it
+- Refactor other pieces of the codebase bit by bit
+
 # Debug
 - the plotting with imageio ffpmeg on puhti
 
