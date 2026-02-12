@@ -50,6 +50,7 @@ neuralnet:
     X: 256
     y: 128
   pos_encoding_type: laplacian_pos_enc
+  p_to_r_skip_connection: true
 
 test:
   topks:

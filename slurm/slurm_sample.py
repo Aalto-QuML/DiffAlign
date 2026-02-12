@@ -5,7 +5,7 @@ from slurm_utils import create_and_submit_batch_job, get_platform_info
 
 start_array_job = 0 # 9, 36, 50, 73
 end_array_job = 0
-targets_per_job = 5
+targets_per_job = 1
 offset = 0
 seed = 42 # 42, 101, 90
 
@@ -38,6 +38,8 @@ script_args = {"script_dir": SCRIPT_DIR,
                     '+experiment': experiment_file,
                     'general.seed': seed,
                     'general.name': experiment_name,
+                    'general.wandb.mode': 'offline',
+                    'general.wandb.checkpoint_epochs': [760],
                     'test.n_samples_per_condition': num_samples,
                     'test.n_conditions': targets_per_job,
                     'test.condition_first': '$start_idx' if not slurm_args['interactive'] else 0,

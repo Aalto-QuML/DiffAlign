@@ -345,7 +345,7 @@ def create_and_submit_batch_job(slurm_args,
     if interactive:
         # TODO: for now we don't add the bindings necessary = assumed to be run inside a container in an interactive session
         # might want to add some safeguards here
-        script_args['args']['classifier_guidance.dataset.num_workers'] = 0
+        script_args['args']['dataset.num_workers'] = 0
         script_file = add_script_commands(script_args, slurm_args, fh=None, with_python=with_python)
         print(f"Running script: {script_file}")
         result = subprocess.Popen(["bash", "-c", f"source {script_file} 1 1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
