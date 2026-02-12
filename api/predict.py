@@ -11,7 +11,8 @@ MOCK_PRECURSORS = {
         ('Nc1ccc(O)cc1', 'CC(=O)Cl'),
     ],
 }
-def mock_predict_precursors(
+
+def predict_precursors(
     product_smiles: str,
     n_precursors: int = 5,
     diffusion_steps: int = 100,
