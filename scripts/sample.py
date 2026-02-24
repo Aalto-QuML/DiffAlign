@@ -95,14 +95,12 @@ def sample(cfg: DictConfig):
         "experiments",
         f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
     )
-
     if cfg.diffusion.edge_conditional_set=='test':
         dataloader = datamodule.test_dataloader()
     elif cfg.diffusion.edge_conditional_set=='val':
         dataloader = datamodule.val_dataloader()
     elif cfg.diffusion.edge_conditional_set=='train':
         dataloader = datamodule.train_dataloader()
-        
     t0 = time.time()
     log.info(f'About to sample n_conditions={cfg.test.n_conditions}\n')
     all_gen_rxn_smiles, all_true_rxn_smiles, all_gen_rxn_pyg, all_true_rxn_pyg = model.sample_n_conditions(

@@ -99,7 +99,6 @@ class Dataset(InMemoryDataset):
     def process(self):
         assert DUMMY_RCT_NODE_TYPE in self.atom_types, 'DUMMY_RCT_NODE_TYPE not in atom_types.'
         graphs = []
-            
         for i, rxn_ in enumerate(open(self.raw_paths[self.file_idx], 'r')):
             cannot_generate = False
             reactants = [r for r in rxn_.split('>>')[0].split('.')]
@@ -111,11 +110,9 @@ class Dataset(InMemoryDataset):
             mask_sn = torch.ones(MAX_ATOMS_RXN, dtype=torch.bool) # only sn = False
             mask_atom_mapping = torch.zeros(MAX_ATOMS_RXN, dtype=torch.long)
             mol_assignment = torch.zeros(MAX_ATOMS_RXN, dtype=torch.long)
-
             # preprocess: get total number of product nodes
             nb_product_nodes = sum([len(Chem.MolFromSmiles(p).GetAtoms()) for p in products])
             nb_rct_nodes = sum([len(Chem.MolFromSmiles(r).GetAtoms()) for r in reactants])
-            
             # add dummy nodes: (nodes_in_product + max_added) - nodes_in_reactants
             nb_dummy_toadd = nb_product_nodes + self.max_nodes_more_than_product - nb_rct_nodes
             if nb_dummy_toadd<0 and self.stage=='train':
@@ -125,9 +122,6 @@ class Dataset(InMemoryDataset):
                 # cut the rct nodes
                 nb_dummy_toadd = 0
                 cannot_generate = True
-
-            
-
             for j, r in enumerate(reactants):
                 # NOTE: no supernodes for reactants (treated as one block)
                 gi_nodes, gi_edge_index, gi_edge_attr, atom_map = mol.mol_to_graph(mol=r, atom_types=self.atom_types, 
@@ -139,7 +133,6 @@ class Dataset(InMemoryDataset):
                 g_nodes_rct = torch.cat((g_nodes_rct, gi_nodes), dim=0) if j > 0 else gi_nodes # already a tensor
                 g_edge_index_rct = torch.cat((g_edge_index_rct, gi_edge_index), dim=1) if j > 0 else gi_edge_index
                 g_edge_attr_rct = torch.cat((g_edge_attr_rct, gi_edge_attr), dim=0) if j > 0 else gi_edge_attr
-    
                 atom_mapped_idx = (atom_map!=0).nonzero()
                 mask_atom_mapping[atom_mapped_idx+offset] = atom_map[atom_mapped_idx]
                 mol_assignment[offset:offset+gi_nodes.shape[0]] = j+1
@@ -156,7 +149,6 @@ class Dataset(InMemoryDataset):
             # mask_atom_mapping = torch.zeros(MAX_ATOMS_RXN, dtype=torch.long) # reset atom_mapping info
             # mask_atom_mapping[:g_nodes_rct.shape[0]] = other_tensors['atom_map']
             # offset -= rct_cut
-
             g_nodes_dummy = torch.ones(nb_dummy_toadd, dtype=torch.long) * self.atom_types.index(DUMMY_RCT_NODE_TYPE)
             g_nodes_dummy = F.one_hot(g_nodes_dummy, num_classes=len(self.atom_types)).float()
             # edges: fully connected to every node in the rct side with edge type 'none'
@@ -166,7 +158,6 @@ class Dataset(InMemoryDataset):
             mol_assignment[offset:offset+g_nodes_dummy.shape[0]] = 0
             # mask_atom_mapping[offset:offset+g_nodes_dummy.shape[0]] = MAX_ATOMS_RXN
             offset += g_nodes_dummy.shape[0]
-            
             g_nodes = torch.cat([g_nodes_rct, g_nodes_dummy], dim=0)
             g_edge_index = torch.cat([g_edge_index_rct, g_edges_idx_dummy], dim=1)
             g_edge_attr = torch.cat([g_edge_attr_rct, g_edges_attr_dummy], dim=0)
@@ -327,11 +318,9 @@ class DataModule(AbstractDataModule):
                 unique, counts = torch.unique(batch_without_sn, return_counts=True)
                 for count in counts:
                     all_counts[count] += 1
-
         max_index = max(all_counts.nonzero())
         all_counts = all_counts[:max_index + 1]
         all_counts = all_counts/all_counts.sum()
-        
         return all_counts
 
     def node_types(self):

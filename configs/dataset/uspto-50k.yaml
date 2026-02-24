@@ -1,4 +1,5 @@
 name: 'uspto-50k'
+max_atom_weight: 390
 dataset_nb: 'block-15'
 datadir: 'data/uspto-50k'
 datadist_dir: 'data/uspto-50k'

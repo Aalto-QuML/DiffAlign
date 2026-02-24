@@ -5,3 +5,4 @@ pin_memory: False
 remove_h: False
 num_workers: 0
 shuffle: False
+max_atom_weight: 390

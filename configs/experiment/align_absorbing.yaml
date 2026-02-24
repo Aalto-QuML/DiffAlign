@@ -140,6 +140,7 @@ train:
   num_annealing_epochs: 10
 
 dataset:
+  max_atom_weight: 390
   name: uspto-50k
   datadir: data/uspto-50k-block-15-severilocal
   shuffle: true
