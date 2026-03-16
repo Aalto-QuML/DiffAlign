@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
 from hydra import compose, initialize
@@ -38,7 +38,13 @@ def smiles_to_dense_data(
     bond_types: List[BT],
 ):
     cannot_generate = False
-    rxn_smiles = f"{product_smiles}>>{product_smiles}"
+    # Add atom mapping numbers so positional encodings work correctly.
+    # Without mappings, all atoms get identical encodings (catastrophically OOD).
+    mol = Chem.MolFromSmiles(product_smiles)
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+    product_smiles_mapped = Chem.MolToSmiles(mol)
+    rxn_smiles = f"{product_smiles_mapped}>>{product_smiles_mapped}"
     reactants = [r for r in rxn_smiles.split('>>')[0].split('.')]
     products = [p for p in rxn_smiles.split('>>')[1].split('.')]
     offset = 0 
@@ -175,12 +181,14 @@ def smiles_to_dense_data(
     perm = torch.cat([torch.zeros(1, dtype=torch.long), perm])
     mask_atom_mapping = perm[mask_atom_mapping]
 
-    graph = Data(x=g_nodes, edge_index=g_edge_index, 
+    data = Data(x=g_nodes, edge_index=g_edge_index,
                     edge_attr=g_edge_attr, y=y, idx=0,
-                    mask_sn=mask_sn, mask_reactant_and_sn=mask_reactant_and_sn, 
+                    mask_sn=mask_sn, mask_reactant_and_sn=mask_reactant_and_sn,
                     mask_product_and_sn=mask_product_and_sn, mask_atom_mapping=mask_atom_mapping,
                     mol_assignment=mol_assignment, cannot_generate=cannot_generate)
-    dense_data = to_dense(graph)
+    # Wrap in a Batch to match the working pipeline (to_dense expects data.batch)
+    batch = Batch.from_data_list([data])
+    dense_data = to_dense(batch)
     return dense_data
   
 def load_model(cfg):
@@ -258,7 +266,9 @@ def predict_precursors_from_diffalign(
             overrides=["+experiment=align_absorbing"]
         )
     # load model
+    cfg.diffusion.diffusion_steps_eval = diffusion_steps
     model = load_model(cfg)
+    model.eval()
     print('done loading model.')
     # create dense data
     dense_data = smiles_to_dense_data(
@@ -272,11 +282,12 @@ def predict_precursors_from_diffalign(
         canonicalize_molecule=cfg.dataset.canonicalize_molecule,
         permute_mols=cfg.dataset.permute_mols
     )
+    dense_data = dense_data.to_device(device)
     print('done creating dense data.')
     # sample
     final_samples = model.sample_for_condition(
-        dense_data=dense_data, 
-        n_samples=cfg.test.n_samples_per_condition, 
+        dense_data=dense_data,
+        n_samples=n_precursors,
         inpaint_node_idx=None, 
         inpaint_edge_idx=None, 
         device=device
