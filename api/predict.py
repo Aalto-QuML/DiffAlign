@@ -1,5 +1,4 @@
 
-import random
 import os
 import re
 from pathlib import Path
@@ -12,8 +11,8 @@ from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
 from hydra import compose, initialize
 
-from src.utils.setup import dotdict
-from src.utils.mol import rxn_to_graph_supernode, mol_to_graph
+from src.utils.setup import dotdict, load_weights
+from src.utils.mol import rxn_to_graph_supernode, mol_to_graph, get_cano_smiles_from_dense
 from src.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 from src.datasets.abstract_dataset import DistributionNodes
 from src.utils.graph import to_dense
@@ -126,7 +125,7 @@ def smiles_to_dense_data(
             with_explicit_h=with_explicit_h, 
             supernode_nb=offset+1,
             with_formal_charge=with_formal_charge,
-            add_supernode_edges=add_supernode_edges, 
+            add_supernode_edges=False,  # must match dataset process() which hardcodes False
             get_atom_mapping=True,
             canonicalize_molecule=canonicalize_molecule
         )
@@ -201,14 +200,24 @@ def load_model(cfg):
     atom_weights = [0] + [periodic_table.GetAtomicWeight(re.split(r'\+|\-', atom_type)[0]) for atom_type in atom_types[1:-1]] + [0] # discard charge
     atom_weights = {atom_type: weight for atom_type, weight in zip(atom_types, atom_weights)}
 
-    node_count_path = os.path.join(PROJECT_ROOT, 'checkpoints', 'n_counts.txt')
-    atom_type_path = os.path.join(PROJECT_ROOT, 'checkpoints', 'atom_types.txt')
-    edge_type_path = os.path.join(PROJECT_ROOT, 'checkpoints', 'edge_types.txt')
-    atom_type_unnorm_path = os.path.join(PROJECT_ROOT, 'checkpoints', 'atom_types_unnorm_mol.txt')
-    edge_type_unnorm_path = os.path.join(PROJECT_ROOT, 'checkpoints', 'edge_types_unnorm_mol.txt')
-    paths_exist = os.path.exists(node_count_path) and os.path.exists(atom_type_path)\
-                    and os.path.exists(edge_type_path) and os.path.exists(atom_type_unnorm_path)\
-                    and os.path.exists(edge_type_unnorm_path)
+    # Look in checkpoints/ first, fall back to data processed dir
+    ckpt_dir = os.path.join(PROJECT_ROOT, 'checkpoints')
+    data_dir = os.path.join(PROJECT_ROOT, cfg.dataset.datadir + '-' + str(cfg.dataset.dataset_nb), 'processed')
+    def _find(name):
+        p = os.path.join(ckpt_dir, name)
+        if os.path.exists(p):
+            return p
+        p = os.path.join(data_dir, name)
+        if os.path.exists(p):
+            return p
+        return None
+    node_count_path = _find('n_counts.txt')
+    atom_type_path = _find('atom_types.txt')
+    edge_type_path = _find('edge_types.txt')
+    atom_type_unnorm_path = _find('atom_types_unnorm_mol.txt')
+    edge_type_unnorm_path = _find('edge_types_unnorm_mol.txt')
+    paths_exist = all(p is not None for p in [node_count_path, atom_type_path, edge_type_path,
+                                               atom_type_unnorm_path, edge_type_unnorm_path])
 
     if paths_exist:
         # use the same distributions for all subsets of the dataset
@@ -252,7 +261,8 @@ def load_model(cfg):
     model = model.to(device)
     checkpoint_file = os.path.join(PROJECT_ROOT, 'checkpoints', f'epoch760.pt')
     print(f'loading model from {checkpoint_file}')
-    model.load_state_dict(torch.load(checkpoint_file, map_location=device)['model_state_dict'])
+    state_dict = torch.load(checkpoint_file, map_location=device)['model_state_dict']
+    model = load_weights(model, state_dict, device_count=1)
     return model
 
 def predict_precursors_from_diffalign(
@@ -285,25 +295,39 @@ def predict_precursors_from_diffalign(
     dense_data = dense_data.to_device(device)
     print('done creating dense data.')
     # sample
-    final_samples = model.sample_for_condition(
-        dense_data=dense_data,
-        n_samples=n_precursors,
-        inpaint_node_idx=None, 
-        inpaint_edge_idx=None, 
-        device=device
-    )
+    with torch.no_grad():
+        final_samples = model.sample_for_condition(
+            dense_data=dense_data,
+            n_samples=n_precursors,
+            inpaint_node_idx=None,
+            inpaint_edge_idx=None,
+            device=device
+        )
     print('done sampling.')
 
-MOCK_PRECURSORS = {
-    'CC(=O)Oc1ccccc1C(=O)O': [  # Aspirin
-        ('O=C(O)c1ccccc1O', 'CC(=O)OC(=O)C'),
-        ('c1ccccc1O', 'CC(=O)Cl'),
-    ],
-    'CC(=O)Nc1ccc(O)cc1': [  # Paracetamol
-        ('Nc1ccc(O)cc1', 'CC(=O)O'),
-        ('Nc1ccc(O)cc1', 'CC(=O)Cl'),
-    ],
-}
+    # Convert dense samples to reaction SMILES strings
+    all_rxn_str = get_cano_smiles_from_dense(
+        final_samples.X, final_samples.E,
+        cfg.dataset.atom_types, BOND_TYPES
+    )
+
+    # Extract reactant SMILES (left side of >>), deduplicate, and score by frequency
+    reactant_counts = {}
+    for rxn_str in all_rxn_str:
+        if '>>' in rxn_str:
+            reactants = rxn_str.split('>>')[0]
+        else:
+            reactants = rxn_str
+        if reactants:
+            reactant_counts[reactants] = reactant_counts.get(reactants, 0) + 1
+
+    total = len(all_rxn_str) if all_rxn_str else 1
+    results = []
+    for precursors, count in reactant_counts.items():
+        results.append({'precursors': precursors, 'score': count / total})
+    results.sort(key=lambda x: x['score'], reverse=True)
+    return results[:n_precursors]
+
 
 def predict_precursors(
     product_smiles: str,
@@ -312,22 +336,25 @@ def predict_precursors(
     temperature: float = 1.0,
     beam_size: int = 10,
 ) -> List[Dict[str, Any]]:
-    """Mock prediction function - replace with your actual model."""
+    """Predict retrosynthesis precursors for a given product SMILES."""
     product_mol = Chem.MolFromSmiles(product_smiles)
     if product_mol is None:
         return []
-    results = []
-    if product_smiles in MOCK_PRECURSORS:
-        for precursor_set in MOCK_PRECURSORS[product_smiles][:n_precursors]:
-            score = random.uniform(0.7, 0.95)
-            results.append({'precursors': '.'.join(precursor_set), 'score': score})
-    while len(results) < n_precursors:
-        fake_precursors = random.sample([
-            'CCO', 'CC(=O)O', 'c1ccccc1', 'CC(C)C', 'CCN', 'CCCO',
-            'c1ccc(O)cc1', 'CC(=O)Cl', 'CCBr', 'C=CC=C', 'CC#N',
-            'c1ccc(N)cc1', 'OC(=O)C=C', 'CC(=O)OC(=O)C', 'ClCCCl'
-        ], k=random.randint(2, 3))
-        score = random.uniform(0.3, 0.7) * (temperature / 1.0)
-        results.append({'precursors': '.'.join(fake_precursors), 'score': min(score, 0.99)})
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return results[:n_precursors]
+
+    results = predict_precursors_from_diffalign(
+        product_smiles=product_smiles,
+        n_precursors=n_precursors,
+        diffusion_steps=diffusion_steps,
+    )
+
+    # Validate SMILES in results
+    validated = []
+    for result in results:
+        all_valid = True
+        for smi in result['precursors'].split('.'):
+            if Chem.MolFromSmiles(smi) is None:
+                all_valid = False
+                break
+        if all_valid:
+            validated.append(result)
+    return validated

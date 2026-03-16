@@ -1,1 +1,1 @@
-from .predict import predict_precursors
+from .predict import predict_precursors, predict_precursors_from_diffalign
