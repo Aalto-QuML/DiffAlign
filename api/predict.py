@@ -7,6 +7,10 @@ from typing import List, Dict, Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+# ── CPU inference optimizations ───────────────────────────────────────────────
+torch.set_num_threads(4)  # fewer threads = less contention on shared cloud vCPUs
+torch.backends.mkldnn.enabled = True
 from torch_geometric.data import Data, Batch
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
@@ -370,7 +374,7 @@ def predict_precursors_from_diffalign(
     dense_data = dense_data.to_device(device)
     print('done creating dense data.')
     # sample
-    with torch.no_grad():
+    with torch.inference_mode():
         final_samples = model.sample_for_condition(
             dense_data=dense_data,
             n_samples=n_precursors,
