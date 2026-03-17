@@ -1,6 +1,7 @@
 
 import os
 import re
+import logging
 from pathlib import Path
 from typing import List, Dict, Any
 import numpy as np
@@ -10,12 +11,16 @@ from torch_geometric.data import Data, Batch
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
 from hydra import compose, initialize
+from hydra.core.global_hydra import GlobalHydra
 
 from src.utils.setup import dotdict, load_weights
 from src.utils.mol import rxn_to_graph_supernode, mol_to_graph, get_cano_smiles_from_dense
 from src.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 from src.datasets.abstract_dataset import DistributionNodes
-from src.utils.graph import to_dense
+from src.utils.graph import to_dense, get_index_from_states
+from src.diffusion.noise_schedule import AbsorbingStateTransitionMaskNoEdge
+
+log = logging.getLogger(__name__)
 
 MAX_ATOMS_RXN = 300
 DUMMY_RCT_NODE_TYPE = 'U'
@@ -24,6 +29,70 @@ BOND_TYPES = ['none', BT.SINGLE, BT.DOUBLE, BT.TRIPLE, 'mol', 'within', 'across'
 BOND_ORDERS = [0, 1, 2, 3, 0, 0, 0]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# ── Model caching ──────────────────────────────────────────────────────────
+_cached_model = None
+_cached_cfg = None
+
+
+def get_model_and_cfg():
+    """Load model and config once, return cached copies on subsequent calls."""
+    global _cached_model, _cached_cfg
+    if _cached_model is not None:
+        return _cached_model, _cached_cfg
+
+    log.info("Loading DiffAlign model (one-time)...")
+    GlobalHydra.instance().clear()
+    with initialize(config_path="../configs"):
+        cfg = compose(
+            config_name="default",
+            overrides=["+experiment=align_absorbing"]
+        )
+    # Default eval steps — cheap to rebuild later if caller wants different value
+    cfg.diffusion.diffusion_steps_eval = 10
+
+    model = load_model(cfg)
+    model.eval()
+    log.info("DiffAlign model loaded and cached.")
+
+    _cached_model = model
+    _cached_cfg = cfg
+    return _cached_model, _cached_cfg
+
+
+# ── Transition-model cache (keyed by diffusion_steps_eval) ─────────────────
+_transition_cache = {}
+
+
+def _get_or_build_transition_model_eval(model, cfg, diffusion_steps_eval):
+    """Rebuild transition_model_eval for a different step count. Cheap (just matrices)."""
+    if diffusion_steps_eval in _transition_cache:
+        return _transition_cache[diffusion_steps_eval]
+
+    abs_state_position_x = model.dataset_info.atom_decoder.index('Au')
+    abs_state_position_e = 0
+    node_idx_to_mask, edge_idx_to_mask = get_index_from_states(
+        atom_decoder=model.dataset_info.atom_decoder,
+        bond_decoder=model.dataset_info.bond_decoder,
+        node_states_to_mask=cfg.diffusion.node_states_to_mask,
+        edge_states_to_mask=cfg.diffusion.edge_states_to_mask,
+        device=device,
+    )
+
+    tm = AbsorbingStateTransitionMaskNoEdge(
+        x_classes=model.Xdim_output,
+        e_classes=model.Edim_output,
+        y_classes=model.ydim_output,
+        timesteps=diffusion_steps_eval,
+        diffuse_edges=cfg.diffusion.diffuse_edges,
+        abs_state_position_x=abs_state_position_x,
+        abs_state_position_e=abs_state_position_e,
+        node_idx_to_mask=node_idx_to_mask,
+        edge_idx_to_mask=edge_idx_to_mask,
+    )
+    _transition_cache[diffusion_steps_eval] = tm
+    return tm
+
 
 def smiles_to_dense_data(
     product_smiles: str,
@@ -268,18 +337,24 @@ def load_model(cfg):
 def predict_precursors_from_diffalign(
     product_smiles: str,
     n_precursors: int = 5,
-    diffusion_steps: int = 100
+    diffusion_steps: int = 10
 ):
-    with initialize(config_path="../configs"):
-        cfg = compose(
-            config_name="default",  # your main config
-            overrides=["+experiment=align_absorbing"]
+    model, cfg = get_model_and_cfg()
+
+    # Validate diffusion_steps divides T=500
+    T = cfg.diffusion.diffusion_steps  # 500
+    assert T % diffusion_steps == 0, (
+        f"diffusion_steps={diffusion_steps} must divide T={T}. "
+        f"Valid values: {[d for d in range(1, T+1) if T % d == 0]}"
+    )
+
+    # Swap transition_model_eval if steps differ from current
+    if diffusion_steps != cfg.diffusion.diffusion_steps_eval:
+        model.transition_model_eval = _get_or_build_transition_model_eval(
+            model, cfg, diffusion_steps
         )
-    # load model
-    cfg.diffusion.diffusion_steps_eval = diffusion_steps
-    model = load_model(cfg)
-    model.eval()
-    print('done loading model.')
+        cfg.diffusion.diffusion_steps_eval = diffusion_steps
+    log.info(f"Running inference with diffusion_steps_eval={diffusion_steps}")
     # create dense data
     dense_data = smiles_to_dense_data(
         max_nodes_more_than_product=cfg.dataset.nb_rct_dummy_nodes,
@@ -358,3 +433,7 @@ def predict_precursors(
         if all_valid:
             validated.append(result)
     return validated
+
+
+# ── Eager load at import time (runs once, before first request) ────────────
+get_model_and_cfg()
