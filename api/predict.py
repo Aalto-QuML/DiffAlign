@@ -53,7 +53,7 @@ def get_model_and_cfg():
             overrides=["+experiment=align_absorbing"]
         )
     # Default eval steps — cheap to rebuild later if caller wants different value
-    cfg.diffusion.diffusion_steps_eval = 10
+    cfg.diffusion.diffusion_steps_eval = 1
 
     model = load_model(cfg)
     model.eval()
@@ -340,8 +340,8 @@ def load_model(cfg):
 
 def predict_precursors_from_diffalign(
     product_smiles: str,
-    n_precursors: int = 5,
-    diffusion_steps: int = 10
+    n_precursors: int = 1,
+    diffusion_steps: int = 1
 ):
     model, cfg = get_model_and_cfg()
 
@@ -410,10 +410,8 @@ def predict_precursors_from_diffalign(
 
 def predict_precursors(
     product_smiles: str,
-    n_precursors: int = 5,
-    diffusion_steps: int = 100,
-    temperature: float = 1.0,
-    beam_size: int = 10,
+    n_precursors: int = 1,
+    diffusion_steps: int = 1,
 ) -> List[Dict[str, Any]]:
     """Predict retrosynthesis precursors for a given product SMILES."""
     product_mol = Chem.MolFromSmiles(product_smiles)

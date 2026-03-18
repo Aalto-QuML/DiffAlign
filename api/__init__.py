@@ -1,1 +1,2 @@
 from .predict import predict_precursors, predict_precursors_from_diffalign
+from .syntheseus_model import DiffAlignModel
