@@ -4,7 +4,7 @@ Evaluate the samples saved as wandb artifacts.
 # A script that takes a run id, (a list of epochs) that we have good evaluations for, and updates new re-ranked evaluations to wandb. Also the lambda re-ranking value.
 # What we need:
 # 1. The run id
-# 2. The list of epochs for which we have results from wandb automatically (TODO: How to do this?)
+# 2. The list of epochs for which we have results from wandb automatically
 # retrieve the correct data from wandb for a given run id and epoch
 # get the config file for the run, and create a model based on it (from diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn)
 # Then transform the samples.txt data into the elbo_ranked format
@@ -12,7 +12,7 @@ Evaluate the samples saved as wandb artifacts.
 # true_rcts, true_prods = graph.split_reactions_to_reactants_and_products(true_rxn_smiles)
 # topk_weighted = graph.calculate_top_k(self, weighted_prob_sorted_rxns, true_rcts, true_prods)
 import os
-from src.utils import wandb_utils, io_utils, graph
+from diffalign.utils import wandb_utils, io_utils, graph
 import wandb
 from omegaconf import OmegaConf, DictConfig
 import numpy as np
@@ -24,8 +24,8 @@ import logging
 import pathlib
 import re
 import sys
-from src.utils import setup
-from src.utils import mol
+from diffalign.utils import setup
+from diffalign.utils import mol
 
 # A logger for this file
 log = logging.getLogger(__name__)
@@ -188,7 +188,6 @@ def main(cfg: DictConfig):
     
     sample_graph_data = sample_graph_data.to_device(device)
     true_graph_data = true_graph_data.to_device(device)
-    # TODO: Why is the condition_range input here as well? -> It's not, it's fine
     scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print = model.evaluate_from_artifact(dense_data=true_graph_data, final_samples=sample_graph_data, device=device, condition_range=condition_range, epoch=epoch)
     for i in range(len(placeholders_for_print)):
         original_data_placeholder = placeholders_for_print[i]

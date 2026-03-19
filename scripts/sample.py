@@ -16,8 +16,8 @@ log = logging.getLogger(__name__)
 from omegaconf import DictConfig
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
-from src.utils import graph, setup
-from src.helpers import set_seed
+from diffalign.utils import graph, setup
+from diffalign.helpers import set_seed
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')

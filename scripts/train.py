@@ -23,9 +23,9 @@ log = logging.getLogger(__name__)
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
-from src.utils import setup
+from diffalign.utils import setup
 from hydra.core.hydra_config import HydraConfig
-from src.utils import setup
+from diffalign.utils import setup
 from datetime import date
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
@@ -78,7 +78,7 @@ def main(cfg: DictConfig):
                                                                                         parent_path=parent_path, savedir=savedir, device=device,
                                                                                         device_count=torch.cuda.device_count())
     print(f'last_epoch: {last_epoch}')
-    start_epoch = last_epoch+1 if last_epoch is not None or last_epoch != 0 else 0
+    start_epoch = last_epoch + 1 if (last_epoch is not None and last_epoch != 0) else 0
     model = model.to(device)
     assert start_epoch<cfg.train.epochs, f'start_epoch={start_epoch}<cfg.train.epochs={cfg.train.epochs}.'
     log.info(f'model {setup.count_parameters(model)}\n')
@@ -157,13 +157,11 @@ def main(cfg: DictConfig):
             filename = f'epoch{epoch}.pt'
             torch.save(states_to_save, filename) 
             if cfg.general.wandb.mode=='online': setup.save_file_as_artifact_to_wandb(run, artifactname=f'{run.id}_model', alias=f'epoch{epoch}', filename=filename)
-        exit()   
     end = time.time()
     log.info(f'total training time: {datetime.timedelta(seconds=end-start)}\n')
     if cfg.general.wandb.mode=='online': run.finish()
 
 if __name__ == '__main__':
-    main() #TODO DELETE THIS
     try:
         main()
     except Exception as e:

@@ -20,9 +20,9 @@ from rdkit.Chem.rdchem import BondType as BT
 from torch_geometric.data import Batch
 from hydra import compose, initialize_config_dir
 
-from src.utils import graph, mol, setup
-from src.utils.graph import to_dense
-from src.datasets.uspto_rxn_dataset import Dataset as USPTODataset
+from diffalign.utils import graph, mol, setup
+from diffalign.utils.graph import to_dense
+from diffalign.datasets.supernode_dataset import Dataset as USPTODataset
 from api.predict import smiles_to_dense_data, load_model, BOND_TYPES
 
 # ---------- constants ----------

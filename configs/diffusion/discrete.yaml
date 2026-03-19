@@ -13,7 +13,7 @@ diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2'
 lambda_train: [5, 0]
 lambda_test: 1
 ce_lambda: 0.01 # used with loss vb+ce
-num_node_steps : 1 # Used when transition='nodes_before_edges'. Indicates how many of the steps are used for generating nodes
+num_node_steps : 1
 temperature_scaling_node: 1.0
 temperature_scaling_edge: 1.0
 classifier_free_guidance: False
