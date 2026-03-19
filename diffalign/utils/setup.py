@@ -26,17 +26,51 @@ import re
 import copy
 
 from diffalign.constants import MAX_ATOMS_RXN
-from diffalign.datasets import supernode_dataset
-from diffalign.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 
 log = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-task_to_class_and_model = {
-    'rxn': {'data_class': supernode_dataset,
-            'model_class': DiscreteDenoisingDiffusionRxn},
-}
+
+def _build_task_map():
+    from diffalign.datasets import supernode_dataset
+    from diffalign.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
+    return {
+        'rxn': {'data_class': supernode_dataset,
+                'model_class': DiscreteDenoisingDiffusionRxn},
+    }
+
+
+class _LazyTaskMap:
+    """Lazily builds task_to_class_and_model on first access to break circular imports."""
+    _map = None
+
+    def _ensure(self):
+        if self._map is None:
+            self._map = _build_task_map()
+
+    def __getitem__(self, key):
+        self._ensure()
+        return self._map[key]
+
+    def __contains__(self, key):
+        self._ensure()
+        return key in self._map
+
+    def keys(self):
+        self._ensure()
+        return self._map.keys()
+
+    def items(self):
+        self._ensure()
+        return self._map.items()
+
+    def values(self):
+        self._ensure()
+        return self._map.values()
+
+
+task_to_class_and_model = _LazyTaskMap()
 
 def parse_value(value):
     # Check for list format

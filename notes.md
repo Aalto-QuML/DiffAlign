@@ -1,5 +1,10 @@
 # Refactoring with claude code
-
+- run the verification.md steps in turn 
+- fix the scripts for readability: think about how to best parallelize the sampling and evaluation esp. with syntheseus
+- add the evaluation from multiguide + notebooks for computing the final metrics and generating figures etc
+- refactor core components like the graph object, the data processing class etc
+- reproduce the diffalign paper results
+- get summary of useful ablations and put relevant training runs  
 
 # Sample and Evaluate
 - Get scripts to work on puhti
