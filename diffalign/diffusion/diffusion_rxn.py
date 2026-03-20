@@ -183,25 +183,16 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
         
         return scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print
          
-    @torch.no_grad()  
-    def evaluate(self, epoch, datamodule, device, inpaint_node_idx=None, inpaint_edge_idx=None):
-        log.info(f"Evaluating for epoch {epoch}...\n") # This is now used also for the product-conditional sampling
-        if self.cfg.diffusion.edge_conditional_set=='test':
-            additional_dataloader = datamodule.test_dataloader()
-        elif self.cfg.diffusion.edge_conditional_set=='val': 
-            additional_dataloader = datamodule.val_dataloader()
-        elif self.cfg.diffusion.edge_conditional_set=='train':    
-            additional_dataloader = datamodule.train_dataloader()
-        else:
-            assert 'edge_conditional_set not recognized.'
-                
+    @torch.no_grad()
+    def evaluate(self, epoch, dataloaders, device, inpaint_node_idx=None, inpaint_edge_idx=None):
+        log.info(f"Evaluating for epoch {epoch}...\n")
+        additional_dataloader = dataloaders[self.cfg.diffusion.edge_conditional_set]
+
         eval_start_time = time.time()
         elbo_of_data_time = time.time()
-        ## TODO: UNCOMMENT THIS BACK
         log.info("calculating ELBO...")
-        # TODO: Change this to a similar estimate that we would have during training
-        test_elbo = self.get_elbo_of_data(datamodule.test_dataloader(), n_samples=self.cfg.test.elbo_samples, device=device)
-        train_elbo = self.get_elbo_of_data(datamodule.train_dataloader(), n_samples=self.cfg.test.elbo_samples, device=device)
+        test_elbo = self.get_elbo_of_data(dataloaders['test'], n_samples=self.cfg.test.elbo_samples, device=device)
+        train_elbo = self.get_elbo_of_data(dataloaders['train'], n_samples=self.cfg.test.elbo_samples, device=device)
         log.info(f"ELBO train: {train_elbo}, ELBO test: {test_elbo}. Time taken: {time.time()-elbo_of_data_time}")
         
         if self.cfg.test.full_dataset: 

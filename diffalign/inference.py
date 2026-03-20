@@ -24,6 +24,7 @@ from diffalign.utils.mol import get_cano_smiles_from_dense
 from diffalign.utils.graph_builder import build_rxn_graph
 from diffalign.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 from diffalign.datasets.abstract_dataset import DistributionNodes
+from diffalign.datasets.supernode_dataset import build_dataset_info
 from diffalign.utils.graph import to_dense, get_index_from_states
 from diffalign.diffusion.noise_schedule import AbsorbingStateTransitionMaskNoEdge
 
@@ -142,70 +143,31 @@ def smiles_to_dense_data(
 
 def load_model(cfg):
     device_count = 1
-    # TODO: get rid of dataset_infos and maybe model_kwargs
-    atom_types = cfg.dataset.atom_types
-    allowed_bonds = cfg.dataset.allowed_bonds
-    valencies = [0] + list(abs[0] for atom_type, abs in allowed_bonds.items() if atom_type in atom_types) + [0]
-    periodic_table = Chem.rdchem.GetPeriodicTable()
-    atom_weights = [0] + [periodic_table.GetAtomicWeight(re.split(r'\+|\-', atom_type)[0]) for atom_type in atom_types[1:-1]] + [0] # discard charge
-    atom_weights = {atom_type: weight for atom_type, weight in zip(atom_types, atom_weights)}
 
-    # Look in checkpoints/ first, fall back to data processed dir
+    # Try checkpoints/ first for stats files (without /processed suffix),
+    # fall back to standard data dir via build_dataset_info
     ckpt_dir = os.path.join(PROJECT_ROOT, 'checkpoints')
-    data_dir = os.path.join(PROJECT_ROOT, cfg.dataset.datadir + '-' + str(cfg.dataset.dataset_nb), 'processed')
-    def _find(name):
-        p = os.path.join(ckpt_dir, name)
-        if os.path.exists(p):
-            return p
-        p = os.path.join(data_dir, name)
-        if os.path.exists(p):
-            return p
-        return None
-    node_count_path = _find('n_counts.txt')
-    atom_type_path = _find('atom_types.txt')
-    edge_type_path = _find('edge_types.txt')
-    atom_type_unnorm_path = _find('atom_types_unnorm_mol.txt')
-    edge_type_unnorm_path = _find('edge_types_unnorm_mol.txt')
-    paths_exist = all(p is not None for p in [node_count_path, atom_type_path, edge_type_path,
-                                               atom_type_unnorm_path, edge_type_unnorm_path])
+    stats_files = ['n_counts.txt', 'atom_types.txt', 'edge_types.txt',
+                   'atom_types_unnorm_mol.txt', 'edge_types_unnorm_mol.txt']
+    ckpt_has_stats = all(os.path.exists(os.path.join(ckpt_dir, f)) for f in stats_files)
 
-    if paths_exist:
-        # use the same distributions for all subsets of the dataset
-        n_nodes = torch.from_numpy(np.loadtxt(node_count_path))
-        node_types = torch.from_numpy(np.loadtxt(atom_type_path))
-        edge_types = torch.from_numpy(np.loadtxt(edge_type_path))
-        node_types_unnormalized = torch.from_numpy(np.loadtxt(atom_type_unnorm_path)).long()
-        edge_types_unnormalized = torch.from_numpy(np.loadtxt(edge_type_unnorm_path)).long()
-
-    dataset_infos = dotdict({
-        'node_types_unnormalized': node_types_unnormalized,
-        'edge_types_unnormalized': edge_types_unnormalized,
-        'num_classes': len(node_types),
-        'max_n_nodes': len(n_nodes) - 1,
-        'nodes_dist': DistributionNodes(n_nodes),
-        'atom_decoder': cfg.dataset.atom_types,
-        'bond_decoder': BOND_TYPES,
-        'valencies': valencies,
-        'atom_weights': atom_weights,
-        'max_weight': cfg.dataset.max_atom_weight,
-        'bond_orders': BOND_ORDERS,
-        'remove_h': cfg.dataset.remove_h,
-        'input_dims': dotdict({
-            'X': len(cfg.dataset.atom_types),
-            'E': len(BOND_TYPES),
-            'y': 1
-        }),
-        'output_dims': dotdict({
-            'X': len(cfg.dataset.atom_types),
-            'E': len(BOND_TYPES),
-            'y': 0
-        })
-    })
-    model_kwargs={
+    if ckpt_has_stats:
+        # Symlink or copy approach: build_dataset_info expects files in {dir}/processed/
+        # Create a temp symlink so build_dataset_info can find them
+        import tempfile
+        tmp_base = tempfile.mkdtemp()
+        os.symlink(ckpt_dir, os.path.join(tmp_base, 'processed'))
+        # datadist_dir is relative to 2 parents up from supernode_dataset.py
+        base_path = Path(os.path.realpath(__file__)).parents[1]
+        rel_path = os.path.relpath(tmp_base, base_path)
+        dataset_infos = build_dataset_info(cfg, datadist_dir=rel_path)
+    else:
+        dataset_infos = build_dataset_info(cfg)
+    model_kwargs = {
         'dataset_infos': dataset_infos,
         'node_type_counts_unnormalized': dataset_infos.node_types_unnormalized,
         'edge_type_counts_unnormalized': dataset_infos.edge_types_unnormalized,
-        'use_data_parallel': device_count>1
+        'use_data_parallel': device_count > 1,
     }
     model = DiscreteDenoisingDiffusionRxn(cfg=cfg, **model_kwargs)
     model = model.to(device)
