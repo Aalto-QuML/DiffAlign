@@ -77,14 +77,14 @@ def sample(cfg: DictConfig):
     model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch_num, savedir, model, optimizer, 
                                                                                                             scheduler, scaler, device_count=device_count)
     # 5. sample n_conditions and n_samples_per_condition
+    output_dir = cfg.test.output_dir if cfg.test.output_dir else os.path.join(parent_path, "experiments")
+    os.makedirs(output_dir, exist_ok=True)
     output_file_smiles = os.path.join(
-        parent_path, 
-        "experiments",
+        output_dir,
         f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.txt'
     )
     output_file_pyg = os.path.join(
-        parent_path, 
-        "experiments",
+        output_dir,
         f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
     )
     dataloader = dataloaders[cfg.diffusion.edge_conditional_set]

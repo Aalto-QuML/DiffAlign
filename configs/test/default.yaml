@@ -23,3 +23,4 @@ wandb_run_name: ''
 wandb_run_config: ''
 sort_lambda_value: 0.9 # 1 corresponds to no effect from the counts, 0 corresponds to no effect from ELBO when sorting
 total_cond_eval: null
+output_dir: null # If set, sampling outputs (.txt/.gz) are written here. Defaults to <project>/experiments
