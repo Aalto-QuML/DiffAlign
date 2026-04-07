@@ -279,7 +279,7 @@ def create_and_submit_batch_job(slurm_args, script_args, interactive=False, with
             add_platform_specific_slurm_commands(fh, slurm_args)
             add_script_commands(script_args, slurm_args, fh=fh, with_python=with_python)
 
-        result = subprocess.Popen(["/usr/bin/sbatch", job_file],
+        result = subprocess.Popen(["sbatch", job_file],
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
         stdout, stderr = result.communicate()
