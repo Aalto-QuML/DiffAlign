@@ -38,7 +38,8 @@ slurm_args.update({
 
 time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 experiment_name = f'sample_{args.experiment}_{time_stamp}'
-experiment_output_dir = PROJECT_ROOT / 'experiments' / f'{args.experiment}_{time_stamp}'
+run_subdir = f'{args.experiment}_{time_stamp}'
+experiment_output_dir = PROJECT_ROOT / 'experiments' / run_subdir
 
 script_args = {
     "script_dir": SCRIPT_DIR,
@@ -52,6 +53,7 @@ script_args = {
         'test.n_samples_per_condition': args.n_samples,
         'test.n_conditions': args.n_conditions,
         'test.condition_first': '$start_idx' if not slurm_args['interactive'] else 0,
+        'test.output_dir': str(experiment_output_dir),
     },
     "variables": {
         'targets_per_job': args.n_conditions,
@@ -62,5 +64,5 @@ script_args = {
 }
 script_args['script_name'] = 'sample.py'
 slurm_args['job_name'] = experiment_name
-slurm_args['output_dir'] = str(experiment_output_dir)
+slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], run_subdir)
 create_and_submit_batch_job(slurm_args, script_args, interactive=slurm_args['interactive'])
