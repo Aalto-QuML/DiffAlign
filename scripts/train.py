@@ -10,23 +10,19 @@ import datetime
 import pathlib
 import warnings
 import random
-import numpy as np
 import torch
 import wandb
 import hydra
 import logging
 import copy
 
-# A logger for this file
 log = logging.getLogger(__name__)
 
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
 from diffalign.utils import setup
-from hydra.core.hydra_config import HydraConfig
-from diffalign.utils import setup
-from datetime import date
+from diffalign.helpers import set_seed
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
@@ -56,17 +52,12 @@ def main(cfg: DictConfig):
         # default_cfg = OmegaConf.load(config_path)
         cfg = setup.merge_configs(default_cfg=orig_cfg, new_cfg=dict(run.config), cli_overrides=cli_overrides)
         
-    # set artifact name based on cfg file (one artifact per experiment)
-    # artifact contains model weights, optimizer states, and everything needed to resume training in a single object.
-    # cfg = OmegaConf.create(dict(run.config))
-    np.random.seed(cfg.train.seed)
-    random.seed(cfg.train.seed)
-    torch.manual_seed(cfg.train.seed)
+    set_seed(cfg.train.seed)
     assert cfg.general.task in setup.task_to_class_and_model.keys(), f'Task {cfg.general.task} not in setup.task_to_class_and_model.'
     log.info('Getting dataset infos...')
-    datamodule, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
-                                                  shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False, 
-                                                  slices={'train': None, 'val': None, 'test': None})
+    dataloaders, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
+                                                   shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False,
+                                                   slices={'train': None, 'val': None, 'test': None})
 
     log.info('Getting model...')
     savedir = os.path.join(parent_path, 'experiments', cfg.general.wandb.run_id) if cfg.general.wandb.resume else None
@@ -83,7 +74,7 @@ def main(cfg: DictConfig):
     assert start_epoch<cfg.train.epochs, f'start_epoch={start_epoch}<cfg.train.epochs={cfg.train.epochs}.'
     log.info(f'model {setup.count_parameters(model)}\n')
     log.info('Done loading the model...')
-    batches = setup.get_batches_from_datamodule(cfg, parent_path, datamodule)
+    batches = setup.get_batches_from_datamodule(cfg, parent_path, dataloaders)
     losses = [] 
     start = time.time()
     log.info(f'Training from epoch {start_epoch} to epoch {cfg.train.epochs}\n')
@@ -91,7 +82,7 @@ def main(cfg: DictConfig):
         # Give the option to run the evaluation script here for debugging purposes
         if cfg.test.eval_before_first_epoch==True and epoch == start_epoch: # in case eval_before_first_epoch somehow gets set to string value "False" or something...
             model.eval()
-            scores = model.evaluate(epoch=epoch, datamodule=datamodule, device=device)
+            scores = model.evaluate(epoch=epoch, dataloaders=dataloaders, device=device)
             model.train()
             
         log.info(f"Training epoch {epoch}... learning rate {scheduler.get_last_lr()[0]:.6f}")
@@ -132,7 +123,7 @@ def main(cfg: DictConfig):
         ## evaluate every x epochs + last one
         if epoch%cfg.train.eval_every_epoch==0 or epoch==cfg.train.epochs-1: 
             model.eval()
-            scores = model.evaluate(epoch=epoch, datamodule=datamodule, device=device)
+            scores = model.evaluate(epoch=epoch, dataloaders=dataloaders, device=device)
             assert cfg.train.best_model_criterion in scores.keys(), f'{cfg.train.best_model_criterion} not in scores.'
             
             # save to wandb

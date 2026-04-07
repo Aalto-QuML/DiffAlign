@@ -2,18 +2,16 @@ import os
 from copy import deepcopy
 from typing import Optional, Union, Dict
 from omegaconf import OmegaConf, open_dict
-#from overrides import overrides
 import omegaconf
 import wandb
 import pathlib
 import pickle
 import torch
-import yaml 
+import yaml
 import sys
 import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
 from torch_geometric.loader import DataLoader
-import pickle
 import io
 from fcd_torch import FCD
 from diffalign.utils import graph
@@ -21,7 +19,6 @@ from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 import logging
 from collections import OrderedDict
-import yaml
 import re
 import copy
 
@@ -110,20 +107,22 @@ def capture_cli_overrides():
             
     return OmegaConf.create(overrides)
 
-def get_batches_from_datamodule(cfg, parent_path, datamodule):
+def get_batches_from_datamodule(cfg, parent_path, dataloaders):
     if cfg.train.batch_by_size:
-        data_list_path = os.path.join(parent_path, datamodule.datadir, 'processed', 'train.pickle')
+        datadir = cfg.dataset.datadir
+        if cfg.dataset.dataset_nb != '':
+            datadir += '-' + str(cfg.dataset.dataset_nb)
+        data_list_path = os.path.join(parent_path, datadir, 'processed', 'train.pickle')
         train_data = pickle.load(open(data_list_path, 'rb'))
-        # train_data = torch.load(data_list_path)
-        batches, sizes_found = graph.batch_graph_by_size(input_data_list=train_data, 
-                                                         size_bins=cfg.dataset.size_bins['train'], 
+        batches, sizes_found = graph.batch_graph_by_size(input_data_list=train_data,
+                                                         size_bins=cfg.dataset.size_bins['train'],
                                                          batchsize_bins=cfg.dataset.batchsize_bins['train'],
                                                          get_batches=True)
     else:
-        batches = [b for b in datamodule.train_dataloader()]
-        
+        batches = [b for b in dataloaders['train']]
+
     assert len(batches)>0, 'No batches.'
-    
+
     return batches
         
 class CPU_Unpickler(pickle.Unpickler):
@@ -169,21 +168,6 @@ def mkdir_p(dir):
     '''make a directory (dir) if it doesn't exist'''
     if not os.path.exists(dir):
         os.makedirs(dir)
-
-def create_folders(args):
-    try:
-        # os.makedirs('checkpoints')
-        os.makedirs('graphs')
-        os.makedirs('chains')
-    except OSError:
-        pass
-
-    try:
-        # os.makedirs('checkpoints/' + args.general.name)
-        os.makedirs('graphs/' + args.general.name)
-        os.makedirs('chains/' + args.general.name)
-    except OSError:
-        pass
 
 def merge_configs(default_cfg, new_cfg, cli_overrides):
     default_cfg_ = copy.deepcopy(default_cfg)
@@ -231,29 +215,6 @@ def setup_wandb(cfg, job_type):
         run.config['general']['wandb'] = {'resume': True, 'run_id': run.id, 'entity': 'najwalb', 
                                         'project': 'retrodiffuser', 'mode': 'online'}
         cfg = OmegaConf.create(dict(run.config))
-        # # need these because they are not set automatically by wandb in the run's config file
-        # # NOTE: We need to merge the run config with the default config here in case we are missing the wandb fields in the old run
-        # # Get default config, transform run.config to OmegaConf, merge, transform back to dict
- 
-
-
-        # print(f'run.config.neuralnet.hidden_dims {run.config["neuralnet"]["n_layers"]}\n')
-        # # allow overriding the values specified in the cli
-        # if cli_overrides is not None:
-        #     print(f'\n\noverriding...\n')
-        #     default_cfg = copy.deepcopy(cfg)
-        #     OmegaConf.set_struct(default_cfg, True) # allow adding new fields
-        #     # order of config dictionary is base_config to custom_config: override values in base using custom
-        #     print(f'run.config.neuralnet.hidden_dims {run.config["neuralnet"]["hidden_dims"]}\n')
-        #     new_cfg = OmegaConf.merge(default_cfg, OmegaConf.create(dict(run.config)))
-        #     new_cfg = OmegaConf.merge(new_cfg, cli_overrides)
-        #     new_cfg['general']['wandb']['resume'] = True
-        #     new_cfg['general']['wandb']['run_id'] = run.id
-        #     #new_cfg_dict = OmegaConf.to_container(new_cfg, resolve=True)
-        #     # run.config.update(new_cfg_dict, allow_val_change=True)
-        #     print(f'run.config.neuralnet.hidden_dims {run.config["neuralnet"]["hidden_dims"]}\n')
-        #     exit()
-        # cfg = new_cfg
     else:
         # if we're not resuming, use the cfg dictionary to create a run
         config_dict = omegaconf.OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
@@ -267,27 +228,6 @@ def get_wandb_run(run_path):
     api = wandb.Api()
     run = api.run(run_path)
     return run
-
-def resume_wandb_run(cfg):
-    assert cfg.general.wandb_id != "" and cfg.general.wandb_id != None, "wandb_id must be set if wandb_resume is True"
-    return wandb.init(id=cfg.general.wandb_id, project=cfg.general.project, entity=cfg.general.wandb_team, resume="allow")
-    # return wandb.init(project=cfg.general.project, entity=cfg.general.wandb_team)
-
-# def download_checkpoint_from_wandb_old(savedir, run, epoch_num):
-#     # Download the checkpoint
-#     artifact_name_prefix = f"eval_epoch{epoch_num}"
-#     all_artifacts = run.logged_artifacts()
-#     artifact_name = None
-#     for a in all_artifacts:
-#         if a.name.startswith(f"eval_epoch{epoch_num}:"):
-#             artifact_name = a.name
-#             a.download(root=savedir)
-#     assert artifact_name is not None, f"Artifact with prefix {artifact_name_prefix} not found for the specified run."
-
-#     # Get the name of the downloaded file
-#     downloaded_file = os.path.join(savedir, "artifacts", artifact_name, artifact_name.split(":")[0] + ".pt")
-
-#     return downloaded_file
 
 def download_checkpoint_from_wandb(cfg, savedir, epoch_num, run=None):
     # Download the checkpoint
@@ -317,18 +257,6 @@ def download_checkpoint_from_wandb(cfg, savedir, epoch_num, run=None):
 
     return downloaded_file, a
 
-# def get_latest_epoch_from_wandb_old(run):
-#     """
-#     Gets the number of the latest checkpoint epoch from the wandb run
-#     """
-#     all_artifacts = run.logged_artifacts()
-#     epoch_nums = []
-#     for a in all_artifacts:
-#         if a.name.startswith("eval_epoch"):
-#             epoch_nums.append(int(a.name.split("eval_epoch")[1].split(":")[0]))
-#     assert len(epoch_nums) > 0, "No checkpoints found for the specified run."
-#     return max(epoch_nums)
-
 def get_latest_epoch_from_wandb(cfg):
     """
     Gets the number of the latest checkpoint epoch from the wandb run
@@ -349,66 +277,25 @@ def get_latest_epoch_from_wandb(cfg):
 def get_wandb_run_path(cfg):
     return f"{cfg.general.wandb_team}/{cfg.general.project}/{cfg.general.wandb_id}"
 
-def load_config_from_wandb(cfg, run, overrides=[]):
-    # Download the config file
-    # config_path = "loaded_config.yaml"
-    # with open(config_path, 'w') as f:
-    #     yaml.dump(run.config, f)
-    loaded_config = OmegaConf.create(dict(run.config))
 
-    # The default Hydra config
-    # This context manager ensures that we're working with a clean slate (Hydra's global state is reset upon exit)
-    # log.info("Current working dir: " + os.getcwd())
-
-    # # TODO: Think of a way to add CLI overrides here, in case they are needed
-    # OmegaConf.set_struct(cfg, False)
-    # cfg = OmegaConf.merge(cfg, loaded_config)
-
-    # TODO: Replace this with proper Hydra compose() etc. stuff, this can screw up the data types
-    # for override in overrides: # This is mainly so that general.wandb_id and general.wandb_resume are set correctly
-    #     key, value = override.split('=')
-    #     old_val = OmegaConf.select(cfg, key, throw_on_resolution_failure=False)
-    #     assert old_val != None, 'key not in the original config file'
-    #     OmegaConf.update(cfg, key, type(old_val)(value), merge=True)
-
-    return cfg
-
-def update_config_with_new_keys(cfg, saved_cfg):
-    saved_general = saved_cfg.general
-    saved_train = saved_cfg.train
-    saved_diffusion = saved_cfg.diffusion
-
-    for key, val in saved_general.items():
-        OmegaConf.set_struct(cfg.general, True)
-        with open_dict(cfg.general):
-            if key not in cfg.general.keys():
-                setattr(cfg.general, key, val)
-
-    OmegaConf.set_struct(cfg.train, True)
-    with open_dict(cfg.train):
-        for key, val in saved_train.items():
-            if key not in cfg.train.keys():
-                setattr(cfg.train, key, val)
-
-    OmegaConf.set_struct(cfg.diffusion, True)
-    with open_dict(cfg.diffusion):
-        for key, val in saved_diffusion.items():
-            if key not in cfg.diffusion.keys():
-                setattr(cfg.diffusion, key, val)
-    return cfg
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def get_dataset(cfg, dataset_class, shuffle=True, recompute_info=False, return_datamodule=False, slices={'train':None, 'val':None, 'test':None}):
-    datamodule = dataset_class.DataModule(cfg)
-    datamodule.prepare_data(shuffle=shuffle, slices=slices)
+    dataset_infos = dataset_class.build_dataset_info(cfg)
 
-    dataset_infos = dataset_class.DatasetInfos(datamodule=datamodule, atom_types=cfg.dataset.atom_types, allowed_bonds=cfg.dataset.allowed_bonds, 
-                                               recompute_info=recompute_info, remove_h=cfg.dataset.remove_h)
-    dataset_infos.compute_input_output_dims(datamodule=datamodule)
+    if return_datamodule:
+        dataloaders = dataset_class.create_dataloaders(cfg, slices=slices)
+        if recompute_info:
+            datadist_dir = cfg.dataset.datadist_dir
+            if cfg.dataset.dataset_nb != '':
+                datadist_dir += '-' + str(cfg.dataset.dataset_nb)
+            dataset_class.compute_dataset_statistics(dataloaders, cfg.dataset.atom_types, datadist_dir)
+            dataset_infos = dataset_class.build_dataset_info(cfg)
+        return dataloaders, dataset_infos
 
-    return (datamodule, dataset_infos) if return_datamodule else dataset_infos
+    return dataset_infos
 
 def check_if_dataparallel_dict(state_dict):
     if 'module' in list(state_dict.keys())[-1]: # don't use [0], but instead the last key, because for EMA, the first key is 'initted'
@@ -441,29 +328,6 @@ def load_weights(model, model_state_dict, device_count=None):
     
     return model
 
-# def get_model_v2(cfg, model_class, model_kwargs, checkpoint_file=None):
-#     model = model_class(cfg=cfg, **model_kwargs)
-#     if checkpoint_file is not None:
-#         model = load_weights(model, checkpoint_file)
-#     return model
-
-# # TODO: Get rid of this and replace it with the other functions
-# def load_wandb_last_checkpoint(run_id, resume_from_last_n=1):
-#     api = wandb.Api(overrides={"project": "retrodiffuser"})
-#     run = api.run(f"retrodiffuser/{run_id}")
-    
-#     cnt = resume_from_last_n
-#     for i, artifact in enumerate(reversed(run.logged_artifacts())):
-#         if artifact.type=='model':
-#             artifact_dir = artifact.download(os.getcwd())
-#             checkpoint = torch.load(os.path.join(os.getcwd(), f'{artifact_dir}/{artifact.name.split(":")[0]+".pt"}'))
-#             if cnt>0:
-#                 cnt -= 1
-#             if cnt==0:
-#                 break
-        
-#     return checkpoint
-
 def load_all_state_dicts(cfg, model, optimizer, lr_scheduler, scaler, checkpoint_file, device_count=None):
     # TODO: Does this work with multi-GPU, or switching between GPU counts?
     checkpoint = torch.load(checkpoint_file, map_location=torch.device(device))
@@ -488,13 +352,6 @@ def get_model_and_train_objects(cfg, model_class, model_kwargs, parent_path, sav
     assert device is not None and device_count is not None, f'Expected device and device_count not to be None. Found device={device} and device_count={device_count}'
     
     model = model_class(cfg=cfg, **model_kwargs)
-    # if cfg.neuralnet.checkpoint_file is not None:
-    #     checkpoint_path = os.path.join(parent_path, f'experiments/{cfg.general.task}/trained_models/{cfg.neuralnet.checkpoint_file}')
-    #     state_dict = torch.load(checkpoint_path, map_location=torch.device(device))
-    #     if check_if_dataparallel_dict(state_dict):
-    #         state_dict = dataparallel_dict_to_regular_state_dict(state_dict)
-    #     model.load_state_dict(state_dict)
-    #     log.info(f'==== Loaded checkpoint {checkpoint_path}\n')
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.train.lr, amsgrad=True, weight_decay=cfg.train.weight_decay) 
     lr_scheduler = get_lr_scheduler(cfg, optimizer)
@@ -513,28 +370,28 @@ def get_model_and_train_objects(cfg, model_class, model_kwargs, parent_path, sav
     return model, optimizer, lr_scheduler, scaler, last_epoch
 
 def load_weights_from_wandb(cfg, epoch_num, savedir, model, optimizer, lr_scheduler, scaler, run=None, device_count=None):
+    """Load model weights, checking local files first, downloading from wandb if needed."""
     last_epoch = epoch_num or get_latest_epoch_from_wandb(cfg)
-    checkpoint_file, artifact = download_checkpoint_from_wandb(cfg, savedir, last_epoch)
+
+    # Check local first
+    local_path = os.path.join(savedir, f'epoch{last_epoch}.pt')
+    local_path_alt = os.path.join(savedir, f'eval_epoch{last_epoch}.pt')
+    if os.path.exists(local_path):
+        checkpoint_file = local_path
+    elif os.path.exists(local_path_alt):
+        checkpoint_file = local_path_alt
+    else:
+        checkpoint_file, artifact = download_checkpoint_from_wandb(cfg, savedir, last_epoch)
+
     load_all_state_dicts(cfg, model, optimizer, lr_scheduler, scaler, checkpoint_file, device_count)
     artifact_name_in_wandb = f"{cfg.general.wandb.entity}/{cfg.general.wandb.project}/{checkpoint_file.split('/')[-2]}"
-    if run!=None: run.use_artifact(artifact_name_in_wandb)
-    
+    if run is not None:
+        run.use_artifact(artifact_name_in_wandb)
+
     return model, optimizer, lr_scheduler, scaler, artifact_name_in_wandb
 
-def load_weights_from_wandb_no_download(cfg, epoch_num, savedir, model, optimizer, lr_scheduler, scaler, run=None, device_count=None):
-    if not os.path.exists(os.path.join(savedir, f'epoch{epoch_num}.pt')) and \
-       not os.path.exists(os.path.join(savedir, f'eval_epoch{epoch_num}.pt')):
-        return load_weights_from_wandb(cfg, epoch_num, savedir, model, optimizer, lr_scheduler, 
-                                       scaler, run=run, device_count=device_count)
-           
-    checkpoint_file = os.path.join(savedir, f'epoch{epoch_num}.pt')\
-                      if os.path.exists(os.path.join(savedir, f'epoch{epoch_num}.pt'))\
-                      else os.path.join(savedir, f'eval_epoch{epoch_num}.pt')
-    load_all_state_dicts(cfg, model, optimizer, lr_scheduler, scaler, checkpoint_file, device_count)
-    artifact_name_in_wandb = f"{cfg.general.wandb.entity}/{cfg.general.wandb.project}/{checkpoint_file.split('/')[-2]}"
-    if run!=None: run.use_artifact(artifact_name_in_wandb)
-    
-    return model, optimizer, lr_scheduler, scaler, artifact_name_in_wandb
+# Backward-compatible alias
+load_weights_from_wandb_no_download = load_weights_from_wandb
 
 def get_lr_scheduler(cfg, optimizer):
     if cfg.train.lr_scheduler == 'none':
@@ -728,15 +585,3 @@ class EMA(pl.Callback):
     def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if not self._ema_state_dict_ready:
             return  # Skip Lightning sanity validation check if no ema weights has been loaded from a checkpoint.
-
-    # @overrides
-    # def on_save_checkpoint(
-    #         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", checkpoint: Dict
-    # ) -> dict:
-    #     return {"ema_state_dict": self.ema_state_dict, "_ema_state_dict_ready": self._ema_state_dict_ready}
-
-    # @overrides
-    # def on_load_checkpoint(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", callback_state: Dict):
-    #     self._ema_state_dict_ready = callback_state["_ema_state_dict_ready"]
-    #     self.ema_state_dict = callback_state["ema_state_dict"]
-

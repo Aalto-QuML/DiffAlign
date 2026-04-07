@@ -201,7 +201,7 @@ def to_dense(data):
     E = encode_no_element(E)
 
     atom_map_numbers, mol_assignments = None, None
-    keys =  data.keys if type(data.keys)==dict or type(data.keys)==list else data.keys() # TODO: This seems quite hacky at the moment
+    keys = list(data.keys()) if callable(data.keys) else data.keys
     if 'mask_atom_mapping' in keys:
         atom_map_numbers, _ = to_dense_batch(x=data.mask_atom_mapping, batch=data.batch)
     if 'mol_assignment' in keys: # For the original pyg objects, it is called mol_assignment, and not mol_assignments
@@ -231,40 +231,6 @@ def pyg_to_full_precision_expanded(data, atom_types):
     new_data.mol_assignment = new_data.mol_assignment.long()
     return new_data
 
-class PlaceHolderWithoutY:
-    def __init__(self, X, E):
-        self.X = X
-        self.E = E
-
-    def type_as(self, x: torch.Tensor):
-        """ Changes the device and dtype of X, E. """
-        self.X = self.X.type_as(x)
-        self.E = self.E.type_as(x)
-
-        return self
-
-    def mask(self, node_mask=None, collapse=False):
-        x_node_mask = node_mask.unsqueeze(-1)          # bs, n, 1
-        e_node_mask1 = x_node_mask.unsqueeze(2)             # bs, n, 1, 1
-        e_node_mask2 = x_node_mask.unsqueeze(1)             # bs, 1, n, 1
-
-        if collapse:
-            self.X = torch.argmax(self.X, dim=-1) # (bs, n)
-            self.E = torch.argmax(self.E, dim=-1) # (bs, n, n)
-
-            self.X[node_mask == 0] = 0
-            self.E[(e_node_mask1 * e_node_mask2).squeeze(-1) == 0] = 0
-        else:
-            # always mask by node, masking by subgraph is a subset of that
-            self.X = self.X * x_node_mask
-            self.E = self.E * e_node_mask1 * e_node_mask2
-            self.X = encode_no_element(self.X)
-            self.E = encode_no_element(self.E)
-
-            # adjacency matrix of undirected graph => mirrored over the diagonal
-            assert torch.allclose(self.E, torch.transpose(self.E, 1, 2))
-        return self
-    
 def json_to_graph(json_dict, x_classes, e_classes):
     graph = PlaceHolder(X=torch.Tensor(json_dict["X"]).to(torch.float32), E=torch.Tensor(json_dict["E"]).to(torch.float32),
                         y=torch.Tensor(json_dict["y"]), node_mask=torch.Tensor(json_dict["node_mask"]).to(torch.bool), 

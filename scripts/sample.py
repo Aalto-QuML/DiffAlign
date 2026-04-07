@@ -18,6 +18,7 @@ from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
 from diffalign.utils import graph, setup
 from diffalign.helpers import set_seed
+from script_helpers import compute_condition_range
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -29,44 +30,35 @@ os.environ['WANDB__SERVICE_WAIT'] = '1000'
 @hydra.main(version_base='1.1', config_path='../configs', config_name='default')
 def sample(cfg: DictConfig):
     set_seed(cfg.train.seed)
-    mpi_size = 1
-    mpi_rank = 0
 
-    # Extract only the command-line overrides
     cli_overrides = setup.capture_cli_overrides()
     log.info(f'cli_overrides {cli_overrides}\n')
 
-    if cfg.general.wandb.mode=='online': 
-        # run, cfg = setup.setup_wandb(cfg, cli_overrides=cli_overrides, job_type='ranking') # This creates a new wandb run or resumes a run given its id
+    if cfg.general.wandb.mode=='online':
         run, cfg = setup.setup_wandb(cfg, job_type='ranking')
 
-    if cfg.general.wandb.load_run_config: 
+    if cfg.general.wandb.load_run_config:
         run_config = setup.load_wandb_config(cfg)
         cfg = setup.merge_configs(default_cfg=cfg, new_cfg=run_config, cli_overrides=cli_overrides)
-    
+
     log.info(f"Random seed: {cfg.train.seed}")
     log.info(f"Shuffling on: {cfg.dataset.shuffle}")
-    
+
     device_count = torch.cuda.device_count()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f'device_count: {device_count}, device: {device}\n')
-    
+
     epoch_num = cfg.general.wandb.checkpoint_epochs[0]
     sampling_steps = cfg.diffusion.diffusion_steps_eval
-    
-    total_index = cfg.test.condition_index*mpi_size + mpi_rank
+
+    total_index, condition_start_for_job = compute_condition_range(cfg)
     log.info(f'cfg.test.condition_first & slurm array index & total condition index {cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
-    # condition_first: the first condition to be sampled overall
-    # condition_index: defines the range of conditions to be sampled in this particular run (across multiple parallel ones)
-    # So overall, we sample ranges [condition_first, condition_first+n_conditions], [condition_first+n_conditions, condition_first+2*n_conditions], etc.
-    condition_start_for_job = int(cfg.test.condition_first) + int(total_index)*int(cfg.test.n_conditions)
-    if condition_start_for_job is not None: # take only a slice of the 'true' edge conditional set
-        log.info(f"Condition start: {int(cfg.test.condition_first)}+{int(total_index)*int(cfg.test.n_conditions)} = {condition_start_for_job}")
-        data_slices = {'train': None, 'val': None, 'test': None}
-        data_slices[cfg.diffusion.edge_conditional_set] = [int(condition_start_for_job), int(condition_start_for_job)+int(cfg.test.n_conditions)]
+    log.info(f"Condition start: {condition_start_for_job}")
+    data_slices = {'train': None, 'val': None, 'test': None}
+    data_slices[cfg.diffusion.edge_conditional_set] = [int(condition_start_for_job), int(condition_start_for_job)+int(cfg.test.n_conditions)]
     print(f'data_slices {data_slices}\n')
-    datamodule, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'], 
-                                                  shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False, slices=data_slices)
+    dataloaders, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
+                                                   shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False, slices=data_slices)
     
     model, optimizer, scheduler, scaler, start_epoch = setup.get_model_and_train_objects(cfg, model_class=setup.task_to_class_and_model[cfg.general.task]['model_class'], 
                                                                                          model_kwargs={'dataset_infos': dataset_infos, 
@@ -95,12 +87,7 @@ def sample(cfg: DictConfig):
         "experiments",
         f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
     )
-    if cfg.diffusion.edge_conditional_set=='test':
-        dataloader = datamodule.test_dataloader()
-    elif cfg.diffusion.edge_conditional_set=='val':
-        dataloader = datamodule.val_dataloader()
-    elif cfg.diffusion.edge_conditional_set=='train':
-        dataloader = datamodule.train_dataloader()
+    dataloader = dataloaders[cfg.diffusion.edge_conditional_set]
     t0 = time.time()
     log.info(f'About to sample n_conditions={cfg.test.n_conditions}\n')
     all_gen_rxn_smiles, all_true_rxn_smiles, all_gen_rxn_pyg, all_true_rxn_pyg = model.sample_n_conditions(

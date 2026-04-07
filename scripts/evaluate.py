@@ -18,7 +18,6 @@ from omegaconf import OmegaConf, DictConfig
 import numpy as np
 import pickle
 import hydra
-import random
 import torch
 import logging
 import pathlib
@@ -26,17 +25,9 @@ import re
 import sys
 from diffalign.utils import setup
 from diffalign.utils import mol
+from diffalign.helpers import set_seed
+from script_helpers import compute_condition_range, get_dataset_size
 
-# A logger for this file
-log = logging.getLogger(__name__)
-
-try:
-    from mpi4py import MPI
-except:
-    MPI = None
-    log.warning("mpi4py not found. MPI will not be used.")
-
-# A logger for this file
 log = logging.getLogger(__name__)
 parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -102,41 +93,28 @@ def main(cfg: DictConfig):
     # log.info(os.getcwd())
     # log.info(os.listdir())
 
-    # MPI related parameters (in case --ntasks>1)
-    # if MPI is not None:
-    #     comm = MPI.COMM_WORLD
-    #     mpi_size = comm.Get_size() # if not --ntasks>1, this will be 1
-    #     mpi_rank = comm.Get_rank() # this will be 0
-    # else:
-    mpi_size = 1
-    mpi_rank = 0
-
-    # assert cfg.general.wandb.sample_file_name is not None, f'Need to give cfg.general.wandb.sample_file_name in the form epoch#_cond#_sampercond#_# (no extension, last number is the timestamp). Got {cfg.general.wandb.sample_file_name}.'
-    # Extract only the command-line overrides
     cli_overrides = setup.capture_cli_overrides()
 
-    if cfg.general.wandb.mode=='online': 
-        run, cfg = setup.setup_wandb(cfg, cli_overrides=cli_overrides, job_type='ranking') # This creates a new wandb run or resumes a run given its id
-    
+    if cfg.general.wandb.mode=='online':
+        run, cfg = setup.setup_wandb(cfg, cli_overrides=cli_overrides, job_type='ranking')
+
     entity = cfg.general.wandb.entity
     project = cfg.general.wandb.project
 
-    if cfg.general.wandb.load_run_config: 
+    if cfg.general.wandb.load_run_config:
         run_config = setup.load_wandb_config(cfg)
         cfg = setup.merge_configs(default_cfg=cfg, new_cfg=run_config, cli_overrides=cli_overrides)
 
     cfg.general.wandb.entity = entity
     cfg.general.wandb.project = project
-    
-    np.random.seed(cfg.train.seed)
-    random.seed(cfg.train.seed)
-    torch.manual_seed(cfg.train.seed)
-    
+
+    set_seed(cfg.train.seed)
+
     epoch = cfg.general.wandb.checkpoint_epochs[0]
     sampling_steps = cfg.diffusion.diffusion_steps_eval
-    num_gpus = torch.cuda.device_count() # just a safeguard to be able to run this code on cpu as well
-    
-    total_index = cfg.test.condition_index*mpi_size + mpi_rank
+    num_gpus = torch.cuda.device_count()
+
+    total_index, _ = compute_condition_range(cfg)
     log.info(f'cfg.test.condition_first & slurm array index & total condition index {cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
     
     dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
@@ -157,8 +135,7 @@ def main(cfg: DictConfig):
     
     # Dataset & slice statistics
     assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} is not a valid value.\n'
-    # TODO: Fix this, here the validation set size is hardcoded, which is not good
-    max_dataset_size = cfg.dataset.dataset_size.test if cfg.diffusion.edge_conditional_set=='test' else 4951 if cfg.diffusion.edge_conditional_set=='val' else cfg.dataset.dataset_size.train
+    max_dataset_size = get_dataset_size(cfg, cfg.diffusion.edge_conditional_set)
     total_conditions = min(max_dataset_size, cfg.test.total_cond_eval)
     condition_start_zero_indexed = int(total_index)*int(cfg.test.n_conditions) # zero-indexed because no condition_first here
     condition_range = [condition_start_zero_indexed, min(int(condition_start_zero_indexed)+int(cfg.test.n_conditions), max_dataset_size)]

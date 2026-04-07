@@ -139,6 +139,111 @@ def get_cano_smiles_from_dense(X, E, atom_types, bond_types, return_dict=False):
 
     return all_smiles if return_dict else all_rxn_str
 
+def get_cano_smiles_with_atom_mapping(X, E, atom_types, bond_types):
+    """Like get_cano_smiles_from_dense but also returns atom index mappings.
+
+    For each sample in the batch, returns the reaction SMILES string plus a
+    list of per-molecule dicts with ``{smiles, atom_map}`` where ``atom_map``
+    maps ``rdkit_atom_idx -> dense_graph_node_idx``.
+
+    Returns:
+        all_rxn_str: list[str] — reaction SMILES per sample.
+        all_atom_mappings: list[list[dict]] — per-sample list of molecule info
+            dicts.  Each dict has keys ``smiles`` (str) and ``atom_map``
+            (dict[int, int]).
+    """
+    assert X.ndim == 2 and E.ndim == 3, (
+        'Expects batched X of shape (bs*n_samples, n), and batched E of '
+        f'shape (bs*n_samples, n, n). Got X.shape={X.shape} and E.shape={E.shape}.'
+    )
+
+    suno_idx = atom_types.index('SuNo')
+
+    all_rxn_str = []
+    all_atom_mappings = []
+
+    for j in range(X.shape[0]):
+        suno_indices = (X[j, :] == suno_idx).nonzero(as_tuple=True)[0].cpu()
+        cutoff = 1 if 0 in suno_indices else 0
+        atoms = torch.tensor_split(X[j, :], suno_indices, dim=-1)[cutoff:]
+        edges = torch.tensor_split(E[j, :, :], suno_indices, dim=-1)[cutoff:]
+
+        # Compute the dense-graph starting index for each segment.
+        # tensor_split(X, suno_indices) creates parts; with cutoff==1 we skip
+        # the empty first part.  Each remaining part starts at the corresponding
+        # suno_indices value (cutoff==1) or 0 + suno_indices (cutoff==0).
+        # The SuNo atom within each segment is handled by cutoff_suno below.
+        if cutoff == 1:
+            segment_starts = [int(idx) for idx in suno_indices]
+        else:
+            segment_starts = [0] + [int(idx) for idx in suno_indices]
+
+        rxn_str = ''
+        sample_mol_info = []
+
+        for i, mol_atoms in enumerate(atoms):
+            seg_start = segment_starts[i]
+
+            cutoff_inner = 1 if 0 in suno_indices else 0
+            mol_edges_to_all = edges[i]
+            mol_edges_t = torch.tensor_split(mol_edges_to_all, suno_indices, dim=0)[cutoff_inner:]
+            mol_edges = mol_edges_t[i]
+            cutoff_suno = 1 if suno_idx in mol_atoms else 0
+            mol_atoms_trimmed = mol_atoms[cutoff_suno:]
+            mol_edges_trimmed = mol_edges[cutoff_suno:, :][:, cutoff_suno:]
+
+            # Build the mol AND track node_to_idx (same logic as mol_from_graph)
+            masking_atom = atom_types.index('U') if 'U' in atom_types else 0
+            node_to_idx = {}
+            mol_obj = Chem.RWMol()
+            for k in range(len(mol_atoms_trimmed)):
+                if mol_atoms_trimmed[k] == 0 or mol_atoms_trimmed[k] == masking_atom:
+                    continue
+                at = atom_types[int(mol_atoms_trimmed[k])]
+                fc = re.findall(r'[-+]\d+', at)
+                s = re.split(r'[-+]\d+', at)[0]
+                a = Chem.Atom(s)
+                if len(fc) != 0:
+                    a.SetFormalCharge(int(fc[0]))
+                molIdx = mol_obj.AddAtom(a)
+                node_to_idx[k] = molIdx
+
+            for ix, row in enumerate(mol_edges_trimmed):
+                for iy, bond in enumerate(row):
+                    if iy <= ix:
+                        continue
+                    if ix not in node_to_idx or iy not in node_to_idx:
+                        continue
+                    bond_type = bond_types[bond]
+                    if bond_type not in [BT.SINGLE, BT.DOUBLE, BT.TRIPLE]:
+                        continue
+                    mol_obj.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
+
+            smiles = Chem.MolToSmiles(mol_obj, kekuleSmiles=True, isomericSmiles=True)
+
+            # Build rdkit_idx -> dense_node_idx mapping
+            # node_to_idx maps segment-local-trimmed index -> rdkit atom idx.
+            # Dense index = seg_start + cutoff_suno + local_trimmed_idx
+            atom_map = {}
+            for local_idx, rdkit_idx in node_to_idx.items():
+                dense_idx = seg_start + cutoff_suno + local_idx
+                atom_map[rdkit_idx] = int(dense_idx)
+
+            sample_mol_info.append({'smiles': smiles, 'atom_map': atom_map})
+
+            if i < len(atoms) - 2:
+                rxn_str += smiles + '.'
+            elif i == len(atoms) - 2:
+                rxn_str += smiles + '>>'
+            elif i == len(atoms) - 1:
+                rxn_str += smiles
+
+        all_rxn_str.append(rxn_str)
+        all_atom_mappings.append(sample_mol_info)
+
+    return all_rxn_str, all_atom_mappings
+
+
 def get_mol_nodes(mol, atom_types, with_formal_charge=True, get_atom_mapping=False):
     atoms = mol.GetAtoms()
     atom_mapping = torch.zeros(len(atoms), dtype=torch.long)

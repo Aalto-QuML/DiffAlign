@@ -20,10 +20,12 @@ from hydra.core.global_hydra import GlobalHydra
 
 from diffalign.constants import BOND_TYPES
 from diffalign.utils.setup import dotdict, load_weights
-from diffalign.utils.mol import get_cano_smiles_from_dense
+from diffalign.utils.mol import get_cano_smiles_from_dense, get_cano_smiles_with_atom_mapping
+from diffalign.utils.placeholder import PlaceHolder
 from diffalign.utils.graph_builder import build_rxn_graph
 from diffalign.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
 from diffalign.datasets.abstract_dataset import DistributionNodes
+from diffalign.datasets.supernode_dataset import build_dataset_info
 from diffalign.utils.graph import to_dense, get_index_from_states
 from diffalign.diffusion.noise_schedule import AbsorbingStateTransitionMaskNoEdge
 
@@ -142,70 +144,31 @@ def smiles_to_dense_data(
 
 def load_model(cfg):
     device_count = 1
-    # TODO: get rid of dataset_infos and maybe model_kwargs
-    atom_types = cfg.dataset.atom_types
-    allowed_bonds = cfg.dataset.allowed_bonds
-    valencies = [0] + list(abs[0] for atom_type, abs in allowed_bonds.items() if atom_type in atom_types) + [0]
-    periodic_table = Chem.rdchem.GetPeriodicTable()
-    atom_weights = [0] + [periodic_table.GetAtomicWeight(re.split(r'\+|\-', atom_type)[0]) for atom_type in atom_types[1:-1]] + [0] # discard charge
-    atom_weights = {atom_type: weight for atom_type, weight in zip(atom_types, atom_weights)}
 
-    # Look in checkpoints/ first, fall back to data processed dir
+    # Try checkpoints/ first for stats files (without /processed suffix),
+    # fall back to standard data dir via build_dataset_info
     ckpt_dir = os.path.join(PROJECT_ROOT, 'checkpoints')
-    data_dir = os.path.join(PROJECT_ROOT, cfg.dataset.datadir + '-' + str(cfg.dataset.dataset_nb), 'processed')
-    def _find(name):
-        p = os.path.join(ckpt_dir, name)
-        if os.path.exists(p):
-            return p
-        p = os.path.join(data_dir, name)
-        if os.path.exists(p):
-            return p
-        return None
-    node_count_path = _find('n_counts.txt')
-    atom_type_path = _find('atom_types.txt')
-    edge_type_path = _find('edge_types.txt')
-    atom_type_unnorm_path = _find('atom_types_unnorm_mol.txt')
-    edge_type_unnorm_path = _find('edge_types_unnorm_mol.txt')
-    paths_exist = all(p is not None for p in [node_count_path, atom_type_path, edge_type_path,
-                                               atom_type_unnorm_path, edge_type_unnorm_path])
+    stats_files = ['n_counts.txt', 'atom_types.txt', 'edge_types.txt',
+                   'atom_types_unnorm_mol.txt', 'edge_types_unnorm_mol.txt']
+    ckpt_has_stats = all(os.path.exists(os.path.join(ckpt_dir, f)) for f in stats_files)
 
-    if paths_exist:
-        # use the same distributions for all subsets of the dataset
-        n_nodes = torch.from_numpy(np.loadtxt(node_count_path))
-        node_types = torch.from_numpy(np.loadtxt(atom_type_path))
-        edge_types = torch.from_numpy(np.loadtxt(edge_type_path))
-        node_types_unnormalized = torch.from_numpy(np.loadtxt(atom_type_unnorm_path)).long()
-        edge_types_unnormalized = torch.from_numpy(np.loadtxt(edge_type_unnorm_path)).long()
-
-    dataset_infos = dotdict({
-        'node_types_unnormalized': node_types_unnormalized,
-        'edge_types_unnormalized': edge_types_unnormalized,
-        'num_classes': len(node_types),
-        'max_n_nodes': len(n_nodes) - 1,
-        'nodes_dist': DistributionNodes(n_nodes),
-        'atom_decoder': cfg.dataset.atom_types,
-        'bond_decoder': BOND_TYPES,
-        'valencies': valencies,
-        'atom_weights': atom_weights,
-        'max_weight': cfg.dataset.max_atom_weight,
-        'bond_orders': BOND_ORDERS,
-        'remove_h': cfg.dataset.remove_h,
-        'input_dims': dotdict({
-            'X': len(cfg.dataset.atom_types),
-            'E': len(BOND_TYPES),
-            'y': 1
-        }),
-        'output_dims': dotdict({
-            'X': len(cfg.dataset.atom_types),
-            'E': len(BOND_TYPES),
-            'y': 0
-        })
-    })
-    model_kwargs={
+    if ckpt_has_stats:
+        # Symlink or copy approach: build_dataset_info expects files in {dir}/processed/
+        # Create a temp symlink so build_dataset_info can find them
+        import tempfile
+        tmp_base = tempfile.mkdtemp()
+        os.symlink(ckpt_dir, os.path.join(tmp_base, 'processed'))
+        # datadist_dir is relative to 2 parents up from supernode_dataset.py
+        base_path = Path(os.path.realpath(__file__)).parents[1]
+        rel_path = os.path.relpath(tmp_base, base_path)
+        dataset_infos = build_dataset_info(cfg, datadist_dir=rel_path)
+    else:
+        dataset_infos = build_dataset_info(cfg)
+    model_kwargs = {
         'dataset_infos': dataset_infos,
         'node_type_counts_unnormalized': dataset_infos.node_types_unnormalized,
         'edge_type_counts_unnormalized': dataset_infos.edge_types_unnormalized,
-        'use_data_parallel': device_count>1
+        'use_data_parallel': device_count > 1,
     }
     model = DiscreteDenoisingDiffusionRxn(cfg=cfg, **model_kwargs)
     model = model.to(device)
@@ -215,28 +178,72 @@ def load_model(cfg):
     model = load_weights(model, state_dict, device_count=1)
     return model
 
+def _ensure_transition_model(model, cfg, diffusion_steps):
+    """Swap transition_model_eval if steps differ from current."""
+    T = cfg.diffusion.diffusion_steps  # 500
+    assert T % diffusion_steps == 0, (
+        f"diffusion_steps={diffusion_steps} must divide T={T}. "
+        f"Valid values: {[d for d in range(1, T+1) if T % d == 0]}"
+    )
+    if diffusion_steps != cfg.diffusion.diffusion_steps_eval:
+        model.transition_model_eval = _get_or_build_transition_model_eval(
+            model, cfg, diffusion_steps
+        )
+        cfg.diffusion.diffusion_steps_eval = diffusion_steps
+
+
+def _decode_samples(final_samples, cfg):
+    """Decode final_samples into deduplicated results with atom mappings.
+
+    Returns list of dicts: {precursors, score, sample_data, atom_mapping}
+    """
+    all_rxn_str, all_atom_mappings = get_cano_smiles_with_atom_mapping(
+        final_samples.X, final_samples.E,
+        cfg.dataset.atom_types, BOND_TYPES,
+    )
+
+    # Deduplicate by reactant SMILES, track which sample index produced each
+    reactant_info = {}  # precursors -> {count, first_sample_idx}
+    for idx, rxn_str in enumerate(all_rxn_str):
+        reactants = rxn_str.split('>>')[0] if '>>' in rxn_str else rxn_str
+        if reactants:
+            if reactants not in reactant_info:
+                reactant_info[reactants] = {'count': 0, 'sample_idx': idx}
+            reactant_info[reactants]['count'] += 1
+
+    total = len(all_rxn_str) if all_rxn_str else 1
+    results = []
+    for precursors, info in reactant_info.items():
+        sample_idx = info['sample_idx']
+        sample_ph = final_samples.select_by_batch_idx(sample_idx)
+
+        # atom_mapping for reactant molecules only (exclude last = product)
+        mol_infos = all_atom_mappings[sample_idx]
+        reactant_mol_infos = mol_infos[:-1] if len(mol_infos) > 1 else mol_infos
+
+        results.append({
+            'precursors': precursors,
+            'score': info['count'] / total,
+            'sample_data': sample_ph.serialize(),
+            'atom_mapping': [
+                {'smiles': mi['smiles'], 'atom_map': {str(k): v for k, v in mi['atom_map'].items()}}
+                for mi in reactant_mol_infos
+            ],
+        })
+
+    results.sort(key=lambda x: x['score'], reverse=True)
+    return results
+
+
 def predict_precursors_from_diffalign(
     product_smiles: str,
     n_precursors: int = 1,
     diffusion_steps: int = 1
 ):
     model, cfg = get_model_and_cfg()
-
-    # Validate diffusion_steps divides T=500
-    T = cfg.diffusion.diffusion_steps  # 500
-    assert T % diffusion_steps == 0, (
-        f"diffusion_steps={diffusion_steps} must divide T={T}. "
-        f"Valid values: {[d for d in range(1, T+1) if T % d == 0]}"
-    )
-
-    # Swap transition_model_eval if steps differ from current
-    if diffusion_steps != cfg.diffusion.diffusion_steps_eval:
-        model.transition_model_eval = _get_or_build_transition_model_eval(
-            model, cfg, diffusion_steps
-        )
-        cfg.diffusion.diffusion_steps_eval = diffusion_steps
+    _ensure_transition_model(model, cfg, diffusion_steps)
     log.info(f"Running inference with diffusion_steps_eval={diffusion_steps}")
-    # create dense data
+
     dense_data = smiles_to_dense_data(
         max_nodes_more_than_product=cfg.dataset.nb_rct_dummy_nodes,
         product_smiles=product_smiles,
@@ -246,42 +253,85 @@ def predict_precursors_from_diffalign(
         with_formal_charge=cfg.dataset.with_formal_charge,
         add_supernode_edges=cfg.dataset.add_supernode_edges,
         canonicalize_molecule=cfg.dataset.canonicalize_molecule,
-        permute_mols=cfg.dataset.permute_mols
+        permute_mols=cfg.dataset.permute_mols,
     )
     dense_data = dense_data.to_device(device)
-    print('done creating dense data.')
-    # sample
+    log.info('Done creating dense data.')
+
     with torch.inference_mode():
         final_samples = model.sample_for_condition(
             dense_data=dense_data,
             n_samples=n_precursors,
             inpaint_node_idx=None,
             inpaint_edge_idx=None,
-            device=device
+            device=device,
         )
-    print('done sampling.')
+    log.info('Done sampling.')
 
-    # Convert dense samples to reaction SMILES strings
-    all_rxn_str = get_cano_smiles_from_dense(
-        final_samples.X, final_samples.E,
-        cfg.dataset.atom_types, BOND_TYPES
-    )
+    results = _decode_samples(final_samples, cfg)
+    return results[:n_precursors]
 
-    # Extract reactant SMILES (left side of >>), deduplicate, and score by frequency
-    reactant_counts = {}
-    for rxn_str in all_rxn_str:
-        if '>>' in rxn_str:
-            reactants = rxn_str.split('>>')[0]
-        else:
-            reactants = rxn_str
-        if reactants:
-            reactant_counts[reactants] = reactant_counts.get(reactants, 0) + 1
 
-    total = len(all_rxn_str) if all_rxn_str else 1
-    results = []
-    for precursors, count in reactant_counts.items():
-        results.append({'precursors': precursors, 'score': count / total})
-    results.sort(key=lambda x: x['score'], reverse=True)
+def predict_with_inpainting(
+    product_smiles: str,
+    previous_sample_data: dict,
+    inpaint_node_indices: List[int],
+    n_precursors: int = 1,
+    diffusion_steps: int = 1,
+) -> List[Dict[str, Any]]:
+    """Re-generate precursors while keeping selected atoms fixed (inpainting).
+
+    Args:
+        product_smiles: Target product SMILES.
+        previous_sample_data: Serialized PlaceHolder from a previous prediction.
+        inpaint_node_indices: Dense graph node indices to keep fixed.
+        n_precursors: Number of samples to generate.
+        diffusion_steps: Number of diffusion steps.
+
+    Returns:
+        List of result dicts with precursors, score, sample_data, atom_mapping.
+    """
+    model, cfg = get_model_and_cfg()
+    _ensure_transition_model(model, cfg, diffusion_steps)
+    log.info(f"Running inpainting inference with diffusion_steps_eval={diffusion_steps}")
+
+    dense_data = PlaceHolder.deserialize(previous_sample_data).to_device(device)
+
+    # Auto-derive edge indices from the collapsed E tensor
+    E_collapsed = dense_data.E[0] if dense_data.E.ndim >= 3 else dense_data.E
+    inpaint_edge_indices = []
+    for i_pos, ni in enumerate(inpaint_node_indices):
+        for nj in inpaint_node_indices[i_pos + 1:]:
+            if 0 <= ni < E_collapsed.shape[0] and 0 <= nj < E_collapsed.shape[1]:
+                if int(E_collapsed[ni, nj]) != 0:
+                    inpaint_edge_indices.append([ni, nj])
+
+    # The serialized sample was collapsed (argmax'd): X is (1, n), E is (1, n, n).
+    # sample_for_condition expects one-hot: X (1, n, dx), E (1, n, n, de).
+    # Convert back to one-hot.
+    import torch.nn.functional as F
+    dx = model.Xdim_output
+    de = model.Edim_output
+    if dense_data.X.ndim == 2:
+        dense_data.X = F.one_hot(dense_data.X.long(), num_classes=dx).float()
+    if dense_data.E.ndim == 3:
+        dense_data.E = F.one_hot(dense_data.E.long(), num_classes=de).float()
+
+    # Format as list-of-lists (one per batch element)
+    inpaint_node_idx = [inpaint_node_indices]
+    inpaint_edge_idx = [inpaint_edge_indices] if inpaint_edge_indices else None
+
+    with torch.inference_mode():
+        final_samples = model.sample_for_condition(
+            dense_data=dense_data,
+            n_samples=n_precursors,
+            inpaint_node_idx=inpaint_node_idx,
+            inpaint_edge_idx=inpaint_edge_idx,
+            device=device,
+        )
+    log.info('Done inpainting sampling.')
+
+    results = _decode_samples(final_samples, cfg)
     return results[:n_precursors]
 
 

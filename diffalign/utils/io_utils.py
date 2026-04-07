@@ -2,7 +2,7 @@ import re
 import copy
 import random
 import numpy as np
-from utils import graph, mol
+from diffalign.utils import graph, mol
 from torch_geometric.data import InMemoryDataset, Batch, Data
 import torch.nn.functional as F
 import logging
@@ -35,7 +35,6 @@ def get_samples_from_file_pyg(cfg, filepath, condition_range):
     # sample_graph_data = graph.pyg_to_full_precision_expanded(sample_graph_data, cfg.dataset.atom_types)
 
     true_graph_data, sample_graph_data = dense_from_pyg_file_data(cfg, reactions)
-    
     return true_graph_data, sample_graph_data
 
 def get_samples_from_file(cfg, filepath, condition_range=None):
@@ -199,15 +198,6 @@ def dense_from_pyg_file_data(cfg, reactions):
     sample_graph_data = graph.to_dense(sample_pyg_data)
     return true_graph_data, sample_graph_data
 
-    # for i, (true_rxn, samples) in enumerate(reactions):
-    #     true_rxn_graphs.extend(true_rxn.to_data_list())
-    #     samples_graphs.extend(samples.to_data_list())
-    # true_pyg_data = Batch.from_data_list(true_rxn_graphs)
-    # sample_pyg_data = Batch.from_data_list(samples_graphs)
-    # true_graph_data = graph.to_dense(true_pyg_data)
-    # sample_graph_data = graph.to_dense(sample_pyg_data)
-    # return true_graph_data, sample_graph_data
-
 def read_saved_reaction_data(data):
     # Reads the saved reaction data from the samples.txt file
     # Split the data into individual blocks based on '(cond ?)' pattern
@@ -243,197 +233,81 @@ def read_saved_reaction_only_data(data, condition_range=None):
     return reactions
 
 def restructure_reactions(reactions, with_count=True, with_count_and_prob=False):
-    """
-    Transform from format
-        reactions = [
-        ("C.C>>CC", [( "A.A>>CC", [1, 2, 3, 4] ), ( "B.B>>CC", [5, 6, 7, 8] )]),
-        ("D.D>>DD", [( "X.X>>DD", [9, 10, 11, 12] ), ( "Y.Y>>DD", [13, 14, 15, 16] )])
-        ]
-
-        to the format in elbo_sorted_rxns, that is, a dictionary with the product as key and a list of dictionaries as value, where each dictionary is of the form
-        {'rcts': [rct1, rct2, ...], 'prod': [prod],
-        Example usage:
-        reactions = [
-            ("C.C>>CC", [( "A.A>>CC", [1, 2, 3, 4] ), ( "B.B>>CC", [5, 6, 7, 8] )]),
-            ("D.D>>DD", [( "X.X>>DD", [9, 10, 11, 12] ), ( "Y.Y>>DD", [13, 14, 15, 16] )])
-        ]
-        output = restructure_reactions(reactions)
-        print(output)   
-    """
-    # Initialize the dictionary to store the restructured data
+    """Transform list of (original_rxn, [(gen_rxn, numbers), ...]) into a dict
+    keyed by product SMILES with list-of-dict values."""
     restructured_data = {}
 
-    # Iterate over each original_reaction and its generated_reactions
     for original_reaction, generated_reactions in reactions:
-        # Split the original reaction on ">>" to separate reactants and product
         _, original_product = original_reaction.split(">>")
-        # print("Original product: ", original_product)
-
-        # Initialize the list that will hold the dictionaries for each generated reaction
         generated_list = []
 
-        # Iterate over each generated reaction
         for reaction_smiles, numbers in generated_reactions:
-            # Split the generated reaction on ">>" to separate reactants and product
             generated_reactants, generated_product = reaction_smiles.split(">>")
-            
-            # print("Reaction: ", reaction_smiles)
+            assert generated_product.strip() == original_product.strip(), \
+                   f'Product mismatch: {original_product.strip()} vs {generated_product.strip()}'
 
-            # Ensure that the generated product matches the original product
-            assert generated_product.strip()==original_product.strip(),\
-                   f'Original product {original_product.strip()} and generated product {generated_product.strip()} do not match.\n'
-            generated_reactants = generated_reactants.split('.') # Split the reactants on '.' to get a list of reactants
-            generated_product = [generated_product] # Convert the product to a list to match with the reactants
+            generated_dict = {
+                'rcts': generated_reactants.split('.'),
+                'prod': [generated_product],
+                'elbo': numbers[0],
+                'loss_t': numbers[1],
+                'loss_0': numbers[2],
+            }
+            if with_count_and_prob and len(numbers) >= 5:
+                generated_dict['count'] = numbers[3]
+                generated_dict['prob'] = numbers[4]
+            elif with_count and len(numbers) >= 4:
+                generated_dict['count'] = numbers[3]
 
-            # Extract the numbers
-            if with_count_and_prob:
-                elbo, loss_t, loss_0, count, prob = numbers
-                # Create a dictionary for the generated reaction
-                generated_dict = {
-                    'rcts': generated_reactants,
-                    'prod': generated_product,
-                    'elbo': elbo,
-                    'loss_t': loss_t,
-                    'loss_0': loss_0,
-                    'count': count,
-                    'prob': prob
-                }
-            elif with_count:
-                elbo, loss_t, loss_0, count = numbers
-                # Create a dictionary for the generated reaction
-                generated_dict = {
-                    'rcts': generated_reactants,
-                    'prod': generated_product,
-                    'elbo': elbo,
-                    'loss_t': loss_t,
-                    'loss_0': loss_0,
-                    'count': count
-                }
-            else:
-                elbo, loss_t, loss_0 = numbers
-                # Create a dictionary for the generated reaction
-                generated_dict = {
-                    'rcts': generated_reactants,
-                    'prod': generated_product,
-                    'elbo': elbo,
-                    'loss_t': loss_t,
-                    'loss_0': loss_0
-                }
-
-            # Append the dictionary to the list for this product
             generated_list.append(generated_dict)
 
-        # Add the list of dictionaries to the restructured data under the product key
         restructured_data[original_product.strip()] = generated_list
 
     return restructured_data
 
-def remove_duplicates(elbo_sorted_rxns):
+
+def remove_duplicates(elbo_sorted_rxns, strategy='keep_first'):
+    """Remove duplicate reactions (by reactants), keeping unique entries with counts.
+
+    Args:
+        strategy: 'keep_first' keeps the first occurrence's numbers,
+                  'random' picks a random duplicate's numbers,
+                  'average' averages elbo/loss_t/loss_0 across duplicates.
+    """
     elbo_sorted_rxns = copy.deepcopy(elbo_sorted_rxns)
     new_data = {}
+
     for prod, reactions in elbo_sorted_rxns.items():
         seen_reactions = {}
+        ordered_keys = []
+
         for reaction in reactions:
-            # Convert the reactants list to a tuple so it can be used as a dictionary key
-            reactants_tuple = tuple(reaction['rcts'])
-            if reactants_tuple not in seen_reactions:
-                # Add the reaction with a count of 1 if it's not a duplicate
-                seen_reactions[reactants_tuple] = reaction.copy()
-                seen_reactions[reactants_tuple]['count'] = 1
+            key = tuple(reaction['rcts'])
+            if key not in seen_reactions:
+                seen_reactions[key] = {'first': reaction.copy(), 'all': [reaction], 'count': 1}
+                ordered_keys.append(key)
             else:
-                # Increment the count if it's a duplicate
-                seen_reactions[reactants_tuple]['count'] += 1
-        # Add the unique reactions to the new data structure
-        new_data[prod] = list(seen_reactions.values())
-    return new_data
+                seen_reactions[key]['count'] += 1
+                seen_reactions[key]['all'].append(reaction)
 
-def remove_duplicates_and_select_random(elbo_sorted_rxns):
-    # Selects a random set of (elbo, loss_t, loss_0) from the duplicates
-    elbo_sorted_rxns = copy.deepcopy(elbo_sorted_rxns)
-    new_data = {}
-    for prod, reactions in elbo_sorted_rxns.items():
-        seen_reactions = {}
-        ordered_unique_reactions = []
-        
-        for reaction in reactions:
-            reactants_tuple = tuple(reaction['rcts'])
-            if reactants_tuple not in seen_reactions:
-                # Add the reaction with a count of 1 if it's not a duplicate
-                seen_reactions[reactants_tuple] = (reaction, 1)
-                ordered_unique_reactions.append(reactants_tuple)
+        result = []
+        for key in ordered_keys:
+            entry = seen_reactions[key]
+            count = entry['count']
+
+            if strategy == 'random' and count > 1:
+                chosen = random.choice(entry['all'])
+            elif strategy == 'average' and count > 1:
+                chosen = entry['first']
+                chosen['elbo'] = sum(r['elbo'] for r in entry['all']) / count
+                chosen['loss_t'] = sum(r['loss_t'] for r in entry['all']) / count
+                chosen['loss_0'] = sum(r['loss_0'] for r in entry['all']) / count
             else:
-                # Update the reaction with a count incremented by 1 and replace the numbers with the current reaction's
-                _, count = seen_reactions[reactants_tuple]
-                seen_reactions[reactants_tuple] = (reaction, count + 1)
-        
-        # Now, build the final list of reactions with random numbers from duplicates
-        for reactants_tuple in ordered_unique_reactions:
-            reaction, count = seen_reactions[reactants_tuple]
-            # If there are duplicates, randomly select one of the duplicates' numbers
-            if count > 1:
-                duplicates = [r for r in reactions if tuple(r['rcts']) == reactants_tuple]
-                reaction = random.choice(duplicates)
-            reaction['count'] = count
-            new_data.setdefault(prod, []).append(reaction)
-            
+                chosen = entry['first']
+
+            chosen['count'] = count
+            result.append(chosen)
+
+        new_data[prod] = result
+
     return new_data
-
-def remove_duplicates_and_average_numbers(elbo_sorted_rxns):
-    elbo_sorted_rxns = copy.deepcopy(elbo_sorted_rxns)
-    new_data = {}
-    for prod, reactions in elbo_sorted_rxns.items():
-        seen_reactions = {}
-        ordered_unique_reactions = []
-        
-        for reaction in reactions:
-            reactants_tuple = tuple(reaction['rcts'])
-            if reactants_tuple not in seen_reactions:
-                # Add the reaction with a count of 1 and initialize the sums of numbers
-                seen_reactions[reactants_tuple] = {
-                    'reaction': reaction,
-                    'count': 1,
-                    'sum_elbo': reaction['elbo'],
-                    'sum_loss_t': reaction['loss_t'],
-                    'sum_loss_0': reaction['loss_0']
-                }
-                ordered_unique_reactions.append(reactants_tuple)
-            else:
-                # Update the counts and sums of numbers
-                seen_reaction = seen_reactions[reactants_tuple]
-                seen_reaction['count'] += 1
-                seen_reaction['sum_elbo'] += reaction['elbo']
-                seen_reaction['sum_loss_t'] += reaction['loss_t']
-                seen_reaction['sum_loss_0'] += reaction['loss_0']
-        
-        # Now, build the final list of reactions with average numbers
-        for reactants_tuple in ordered_unique_reactions:
-            seen_reaction = seen_reactions[reactants_tuple]
-            count = seen_reaction['count']
-            # Calculate the average of the numbers
-            avg_elbo = seen_reaction['sum_elbo'] / count
-            avg_loss_t = seen_reaction['sum_loss_t'] / count
-            avg_loss_0 = seen_reaction['sum_loss_0'] / count
-            
-            # Update the reaction with the average numbers and count
-            reaction = seen_reaction['reaction']
-            reaction.update({
-                'elbo': avg_elbo,
-                'loss_t': avg_loss_t,
-                'loss_0': avg_loss_0,
-                'count': count
-            })
-            new_data.setdefault(prod, []).append(reaction)
-            
-    return new_data
-
-# Example usage:
-# original_data = {
-#     'CC': [{'rcts': ['A', 'A'], 'prod': ['CC'], 'elbo': 1, 'loss_t': 2, 'loss_0': 3},
-#            {'rcts': ['B', 'B'], 'prod': ['CC'], 'elbo': 5, 'loss_t': 6, 'loss_0': 7},
-#            {'rcts': ['A', 'A'], 'prod': ['CC'], 'elbo': 1.1, 'loss_t': 2.1, 'loss_0': 3.1}],  # Duplicate for demonstration
-#     'DD': [{'rcts': ['X', 'X'], 'prod': ['DD'], 'elbo': 9, 'loss_t': 10, 'loss_0': 11},
-#            {'rcts': ['Y', 'Y'], 'prod': ['DD'], 'elbo': 13, 'loss_t': 14, 'loss_0': 15}]
-# }
-
-# new_data = remove_duplicates(original_data)
-# print(new_data)
