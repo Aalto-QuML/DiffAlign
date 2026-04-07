@@ -273,6 +273,7 @@ def create_and_submit_batch_job(slurm_args, script_args, interactive=False, with
     else:
         print(f"Creating job file for {slurm_args['job_name']} in {slurm_args['job_dir']}")
         os.makedirs(slurm_args['job_dir'], exist_ok=True)
+        os.makedirs(slurm_args['output_dir'], exist_ok=True)
         job_file = os.path.join(slurm_args['job_dir'], f"{slurm_args['job_name']}.job")
         with open(job_file, 'w') as fh:
             add_general_slurm_job_setup(fh, slurm_args)
