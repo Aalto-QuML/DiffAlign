@@ -15,7 +15,7 @@ slurm_args.update({
     'job_dir': 'jobs',
     'job_ids_file': 'job_ids.txt',
     'output_dir': 'output',
-    'time': '01:00:00',
+    'time': '10:00:00',
     'nodes': 1,
     'ntasks-per-node': 1,
     'cpus-per-task': 1,
