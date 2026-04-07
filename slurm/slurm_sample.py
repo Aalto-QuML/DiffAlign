@@ -38,6 +38,7 @@ slurm_args.update({
 
 time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 experiment_name = f'sample_{args.experiment}_{time_stamp}'
+experiment_output_dir = PROJECT_ROOT / 'experiments' / f'{args.experiment}_{time_stamp}'
 
 script_args = {
     "script_dir": SCRIPT_DIR,
@@ -61,5 +62,5 @@ script_args = {
 }
 script_args['script_name'] = 'sample.py'
 slurm_args['job_name'] = experiment_name
-slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], f'sample_{args.experiment}')
+slurm_args['output_dir'] = str(experiment_output_dir)
 create_and_submit_batch_job(slurm_args, script_args, interactive=slurm_args['interactive'])
