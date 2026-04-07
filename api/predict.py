@@ -21,6 +21,7 @@ from diffalign.inference import (  # noqa: E402, F401
     load_model,
     predict_precursors,
     predict_precursors_from_diffalign,
+    predict_with_inpainting,
     smiles_to_dense_data,
 )
 

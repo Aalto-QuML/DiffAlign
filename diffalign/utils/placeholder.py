@@ -152,6 +152,14 @@ class PlaceHolder:
     def serialize(self):
         return {f.name: getattr(self, f.name).detach().cpu().numpy().tolist() for f in fields(self)}
 
+    @classmethod
+    def deserialize(cls, data: dict) -> 'PlaceHolder':
+        """Inverse of serialize(): convert nested lists back to tensors."""
+        return cls(**{
+            k: torch.tensor(v) if v is not None else None
+            for k, v in data.items()
+        })
+
     def pyg(self):
         """Turns back into a pytorch geometric DataBatch() object."""
         return_data = []
