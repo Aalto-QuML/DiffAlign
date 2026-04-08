@@ -9,17 +9,12 @@ from platform_configs import PLATFORMS, PlatformConfig
 PROJECT_ROOT = Path(os.path.realpath(__file__)).parents[1]
 
 
-def get_platform_info(use_gpu=False):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--interactive', action='store_true')
-    parser.add_argument('--use_pdb', action='store_true')
-    parser.add_argument('--platform', type=str, required=True)
-    args = parser.parse_args()
+def build_platform_info(platform_name, use_gpu=False, interactive=False, use_pdb=False):
+    """Construct the platform info dict from explicit args (no argparse)."""
+    if platform_name not in PLATFORMS:
+        raise ValueError(f'Platform {platform_name} not supported. Choose from: {list(PLATFORMS.keys())}')
 
-    if args.platform not in PLATFORMS:
-        raise ValueError(f'Platform {args.platform} not supported. Choose from: {list(PLATFORMS.keys())}')
-
-    pcfg = PLATFORMS[args.platform]
+    pcfg = PLATFORMS[platform_name]
     partition = pcfg.partition_gpu if use_gpu else pcfg.partition_cpu
 
     return {
@@ -30,9 +25,21 @@ def get_platform_info(use_gpu=False):
         'container': None,
         'venv_path': pcfg.venv_path,
         'puhti_module': pcfg.module,
-        'interactive': args.interactive,
-        'use_pdb': args.use_pdb,
+        'interactive': interactive,
+        'use_pdb': use_pdb,
     }
+
+
+def get_platform_info(use_gpu=False):
+    """Argparse-based wrapper kept for scripts that still take CLI flags."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--interactive', action='store_true')
+    parser.add_argument('--use_pdb', action='store_true')
+    parser.add_argument('--platform', type=str, required=True)
+    args = parser.parse_args()
+    return build_platform_info(
+        args.platform, use_gpu=use_gpu, interactive=args.interactive, use_pdb=args.use_pdb,
+    )
 
 
 def generate_env_setup(fh, slurm_args):

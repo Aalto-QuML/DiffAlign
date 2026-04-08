@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 from datetime import datetime
 from slurm_utils import create_and_submit_batch_job, build_platform_info
@@ -15,12 +16,20 @@ USE_PDB = False              # launch script under pdb
 
 EXPERIMENT = 'align_absorbing'
 EPOCH = 760
-N_CONDITIONS = 1             # conditions per array job
-N_SAMPLES = 1                # samples per condition
+N_CONDITIONS = 1         # must match what was used at sampling time
+N_SAMPLES = 100              # must match what was used at sampling time
+EDGE_CONDITIONAL_SET = 'test'  # train | val | test
+
+# Directory containing the samples_*.gz files. Outputs are written here too.
+# Relative paths are resolved against PROJECT_ROOT.
+SAMPLES_DIR = 'experiments/align_absorbing_test'
+
 SEED = 42
-OFFSET = 0                   # added to the array index when computing start_idx
+OFFSET = 0
 START_ARRAY = 0
-END_ARRAY = 0                # inclusive — total array jobs = END_ARRAY - START_ARRAY + 1
+# Inclusive last array index. For uspto-50k test set with N_CONDITIONS=1 use 4948
+# (4949 conditions). With N_CONDITIONS=k use ceil(4949 / k) - 1.
+END_ARRAY = math.ceil(4949 / N_CONDITIONS) - 1
 
 TIME = '01:00:00'
 MEM = '100G'
@@ -45,9 +54,11 @@ slurm_args.update({
 })
 
 time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-experiment_name = f'sample_{EXPERIMENT}_{time_stamp}'
-run_subdir = f'{EXPERIMENT}_{time_stamp}'
-experiment_output_dir = PROJECT_ROOT / 'experiments' / run_subdir
+experiment_name = f'eval_{EXPERIMENT}_{time_stamp}'
+
+samples_dir = SAMPLES_DIR
+if not os.path.isabs(samples_dir):
+    samples_dir = str(PROJECT_ROOT / samples_dir)
 
 script_args = {
     "script_dir": SCRIPT_DIR,
@@ -57,11 +68,14 @@ script_args = {
         'general.seed': SEED,
         'general.name': experiment_name,
         'general.wandb.mode': 'offline',
+        'general.wandb.load_run_config': 'false',
         'general.wandb.checkpoint_epochs': [EPOCH],
         'test.n_samples_per_condition': N_SAMPLES,
         'test.n_conditions': N_CONDITIONS,
         'test.condition_first': '$start_idx' if not slurm_args['interactive'] else 0,
-        'test.output_dir': str(experiment_output_dir),
+        'test.condition_index': 0,
+        'diffusion.edge_conditional_set': EDGE_CONDITIONAL_SET,
+        'hydra.run.dir': samples_dir,
     },
     "variables": {
         'targets_per_job': N_CONDITIONS,
@@ -70,7 +84,7 @@ script_args = {
         'end_idx': '$((start_idx+targets_per_job))',
     },
 }
-script_args['script_name'] = 'sample.py'
+script_args['script_name'] = 'evaluate.py'
 slurm_args['job_name'] = experiment_name
-slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], run_subdir)
+slurm_args['output_dir'] = os.path.join(slurm_args['output_dir'], experiment_name)
 create_and_submit_batch_job(slurm_args, script_args, interactive=slurm_args['interactive'])

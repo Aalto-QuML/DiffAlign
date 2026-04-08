@@ -129,14 +129,13 @@ def main(cfg: DictConfig):
                                                                                          load_weights_bool=False, device=device, device_count=num_gpus)
     
     # 4. load the weights to the model
-    savedir = os.path.join(parent_path, "experiments", "trained_models", cfg.general.wandb.run_id)
-    model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch, savedir, model, optimizer, 
+    savedir = os.path.join(parent_path, "checkpoints")
+    model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch, savedir, model, optimizer,
                                                                                                             scheduler, scaler, device_count=num_gpus)
-    
+
     # Dataset & slice statistics
     assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} is not a valid value.\n'
     max_dataset_size = get_dataset_size(cfg, cfg.diffusion.edge_conditional_set)
-    total_conditions = min(max_dataset_size, cfg.test.total_cond_eval)
     condition_start_zero_indexed = int(total_index)*int(cfg.test.n_conditions) # zero-indexed because no condition_first here
     condition_range = [condition_start_zero_indexed, min(int(condition_start_zero_indexed)+int(cfg.test.n_conditions), max_dataset_size)]
     log.info(f'condition_range: {condition_range}\n')
