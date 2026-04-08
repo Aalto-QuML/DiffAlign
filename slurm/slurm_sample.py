@@ -23,6 +23,8 @@ START_ARRAY = 0
 END_ARRAY = 0                # inclusive — total array jobs = END_ARRAY - START_ARRAY + 1
 
 TIME = '01:00:00'
+# On puhti/mahti, total memory per task = MEM * CPUS_PER_TASK (mem-per-cpu).
+CPUS_PER_TASK = 1
 MEM = '100G'
 # ---------------------------------------------------------------------------
 
@@ -37,7 +39,7 @@ slurm_args.update({
     'time': TIME,
     'nodes': 1,
     'ntasks-per-node': 1,
-    'cpus-per-task': 1,
+    'cpus-per-task': CPUS_PER_TASK,
     'gpus-per-node': 1,
     'mem': MEM,
     'start_array_job': START_ARRAY,
