@@ -13,18 +13,28 @@ log = logging.getLogger(__name__)
 class ELBOMixin:
     """Mixin class containing ELBO-related methods for DiscreteDenoisingDiffusion."""
 
-    def compute_Lt_all(self, dense_true):
+    def compute_Lt_all(self, dense_true, reduce_with=None):
         '''
             Compute L_s terms: E_{q(x_t|x)} KL[q(x_s|x_t,x_0)||p(x_s|x_t)], with s = t-1
             But compute all of the terms, is this how we want the function to behave?
             To test this, would be nice to have a function for defining the transition matrices
             for different time steps
+
+            If `reduce_with` is None (legacy), returns a list of per-step Lt PlaceHolders
+            on CPU. This holds O(diffusion_steps_eval * bs * n^2) memory.
+
+            If `reduce_with` is a dict with keys ``mask_X``, ``mask_E``, ``lambda_E``,
+            ``avg_over_batch``, ``diffuse_nodes``, ``diffuse_edges``, the per-step Lt is
+            reduced via :func:`helpers.mean_without_masked` inside the loop and only the
+            running sum (a (bs,) or scalar tensor) is kept. This makes peak memory
+            constant in diffusion_steps_eval.
         '''
 
         device = dense_true.X.device
         true_X, true_E = dense_true.X, dense_true.E
 
-        Lts = []
+        Lts = [] if reduce_with is None else None
+        running_sum = None
 
         assert self.T % self.cfg.diffusion.diffusion_steps_eval == 0, 'diffusion_steps_eval should be divisible by diffusion_steps'
         all_steps = list(range(self.cfg.diffusion.diffusion_steps_eval+1))
@@ -50,10 +60,27 @@ class ELBOMixin:
             # compute q(x_{t-1}|x_t, x_0) for X and E
             Lt = self.compute_Lt(dense_true=dense_true, z_t=z_t, t=t_int, x_0_tilde_logit=pred,
                                  transition_model=self.transition_model_eval)
-            Lt.to_device('cpu')
-            Lts.append(Lt)
 
-        return Lts
+            if reduce_with is None:
+                Lt.to_device('cpu')
+                Lts.append(Lt)
+            else:
+                Lt.E = Lt.E * reduce_with['lambda_E']
+                Lt.to_device('cpu')
+                step_term = helpers.mean_without_masked(
+                    graph_obj=Lt,
+                    mask_X=reduce_with['mask_X'], mask_E=reduce_with['mask_E'],
+                    diffuse_nodes=reduce_with['diffuse_nodes'],
+                    diffuse_edges=reduce_with['diffuse_edges'],
+                    avg_over_batch=reduce_with['avg_over_batch'],
+                )
+                running_sum = step_term if running_sum is None else running_sum + step_term
+                # Drop refs so the per-step tensors get freed before the next iter.
+                del Lt, step_term, pred, z_t
+
+        if reduce_with is None:
+            return Lts
+        return running_sum
 
     def compute_Lt(self, dense_true, z_t, t, x_0_tilde_logit, transition_model, log=False):
         # t: a tensor of shape (bs, 1) with the time step
@@ -321,11 +348,9 @@ class ELBOMixin:
         kl_prior = self.kl_prior(dense_true)
         kl_prior.to_device('cpu') # move everything to CPU to avoid memory issues when computing all the Lt terms
 
-        # 3. Diffusion loss
-        loss_all_t = self.compute_Lt_all(dense_true)
-        for loss_t in loss_all_t:
-            loss_t.E = loss_t.E * self.cfg.diffusion.lambda_test
-
+        # Compute the X/E masks once up front: they only depend on dense_true, and we
+        # need them both for the L_t reduction inside compute_Lt_all and for the L_0 /
+        # KL-prior terms below.
         # TODO: Make sure that the extra conditioning terms are zeroed out! -> probably they are but should make sure
         _, mask_X, mask_E = graph.apply_mask(orig=dense_true, z_t=dense_true,
                                              atom_decoder=self.dataset_info.atom_decoder,
@@ -335,6 +360,19 @@ class ELBOMixin:
                                              return_masks=True)
         mask_X = mask_X.to('cpu')
         mask_E = mask_E.to('cpu')
+
+        # 3. Diffusion loss — fold the per-step reduction into compute_Lt_all so we
+        # don't accumulate diffusion_steps_eval Lt placeholders in memory.
+        loss_t_per_dim = self.compute_Lt_all(
+            dense_true,
+            reduce_with={
+                'mask_X': mask_X, 'mask_E': mask_E,
+                'lambda_E': self.cfg.diffusion.lambda_test,
+                'avg_over_batch': avg_over_batch,
+                'diffuse_nodes': self.cfg.diffusion.diffuse_nodes,
+                'diffuse_edges': self.cfg.diffusion.diffuse_edges,
+            },
+        )
 
         # 4. Reconstruction loss
         # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
@@ -360,12 +398,7 @@ class ELBOMixin:
                                                        diffuse_nodes=self.cfg.diffusion.diffuse_nodes,
                                                        avg_over_batch=avg_over_batch)
 
-        loss_t_per_dim = sum([helpers.mean_without_masked(graph_obj=loss_t, mask_X=mask_X, mask_E=mask_E,
-                                                          diffuse_edges=self.cfg.diffusion.diffuse_edges,
-                                                          diffuse_nodes=self.cfg.diffusion.diffuse_nodes,
-                                                          avg_over_batch=avg_over_batch) for loss_t in loss_all_t])
-
-        if len(loss_all_t)==0: loss_t_per_dim = torch.empty_like(kl_prior_per_dim, dtype=torch.float)
+        if loss_t_per_dim is None: loss_t_per_dim = torch.empty_like(kl_prior_per_dim, dtype=torch.float)
         # Combine terms
         vb =  kl_prior_per_dim + loss_t_per_dim - loss_0_per_dim
 
