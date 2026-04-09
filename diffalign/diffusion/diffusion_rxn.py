@@ -160,9 +160,14 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
         all_weighted_prob_sorted_rxns = []
         placeholders_for_print = []
         for i in range(start, end, step):
+            # Slice on CPU, then move only this condition's chunk to the eval device,
+            # so the full (bs*n_samples) tensors never sit on GPU at the same time.
             dense_data_ = dense_data.subset_by_idx(start_idx=n_samples*i*num_gpus, end_idx=n_samples*i*num_gpus+num_gpus*n_samples)
             final_samples_ = final_samples.subset_by_idx(start_idx=n_samples*i*num_gpus, end_idx=n_samples*i*num_gpus+num_gpus*n_samples)
-            scores_, elbo_sorted_reactions, weighted_prob_sorted_rxns = self.score_one_batch(final_samples=final_samples_, true_data=dense_data_, 
+            if device is not None:
+                dense_data_ = dense_data_.to_device(device)
+                final_samples_ = final_samples_.to_device(device)
+            scores_, elbo_sorted_reactions, weighted_prob_sorted_rxns = self.score_one_batch(final_samples=final_samples_, true_data=dense_data_,
                                                                                              bs=num_gpus, n_samples=n_samples, n=n, device=device)
             
             for key in scores_.keys(): # Make sure that no sneak in. This may be a bit paranoid, but trying to evade memory leaks
@@ -178,7 +183,11 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
             log.info(f"scores for condition {i*num_gpus}-{(i+1)*num_gpus}: {scores_}\n")
             #scores = helpers.accumulate_rxn_scores(acc_scores=scores, new_scores=scores_, total_iterations=(condition_range[1]-condition_range[0])//num_gpus)
             scores.append(scores_)
-            
+            # Drop refs to the GPU-resident slice so the next iteration starts clean.
+            del dense_data_, final_samples_, original_placeholder_for_print
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
         log.info(f"Scoring time: {time.time()-t0}")
         
         return scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print
@@ -591,20 +600,40 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
         return rxn_plots
     
     def estimate_elbo_with_repeats(self, final_samples_one_hot):
+        # Optionally split the (bs*n_samples) batch dim into chunks so each model
+        # forward inside elbo() sees fewer samples at once. This is the main knob
+        # for trading compute time for GPU peak memory.
+        chunk_size = self.cfg.test.get('elbo_batch_size', None) if hasattr(self.cfg.test, 'get') else getattr(self.cfg.test, 'elbo_batch_size', None)
+        total = final_samples_one_hot.X.shape[0]
+        if chunk_size is None or chunk_size <= 0 or chunk_size >= total:
+            chunk_ranges = [(0, total)]
+        else:
+            chunk_ranges = [(s, min(s + chunk_size, total)) for s in range(0, total, chunk_size)]
+
         repeated_elbos = []
         repeated_loss_t = []
         repeated_loss_0 = []
         for rep_e in range(self.cfg.test.repeat_elbo):
             log.info(f"Repeat {rep_e}")
-            one_time_elbos, one_time_loss_t, one_time_loss_0 = self.elbo(dense_true=final_samples_one_hot, avg_over_batch=False)
-            repeated_elbos.append(one_time_elbos.unsqueeze(0).float())
-            repeated_loss_t.append(one_time_loss_t.unsqueeze(0).float())
-            repeated_loss_0.append(one_time_loss_0.unsqueeze(0).float())
-            
+            chunk_elbos, chunk_loss_t, chunk_loss_0 = [], [], []
+            for start, end in chunk_ranges:
+                if len(chunk_ranges) == 1:
+                    chunk_input = final_samples_one_hot
+                else:
+                    chunk_input = final_samples_one_hot.subset_by_idx(start, end)
+                one_time_elbos, one_time_loss_t, one_time_loss_0 = self.elbo(dense_true=chunk_input, avg_over_batch=False)
+                chunk_elbos.append(one_time_elbos.float())
+                chunk_loss_t.append(one_time_loss_t.float())
+                chunk_loss_0.append(one_time_loss_0.float())
+                del chunk_input, one_time_elbos, one_time_loss_t, one_time_loss_0
+            repeated_elbos.append(torch.cat(chunk_elbos, dim=0).unsqueeze(0))
+            repeated_loss_t.append(torch.cat(chunk_loss_t, dim=0).unsqueeze(0))
+            repeated_loss_0.append(torch.cat(chunk_loss_0, dim=0).unsqueeze(0))
+
         elbos = torch.cat(repeated_elbos, dim=0).mean(0) # shape (bs*n_samples)
         loss_t = torch.cat(repeated_loss_t, dim=0).mean(0)
         loss_0 = torch.cat(repeated_loss_0, dim=0).mean(0)
-        
+
         return elbos, loss_t, loss_0
 
     @torch.no_grad()

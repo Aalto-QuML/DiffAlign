@@ -65,7 +65,9 @@ class PlaceHolder:
         return self._apply(lambda t: t.clone()[:idx])
 
     def subset_by_idx(self, start_idx, end_idx):
-        return self._apply(lambda t: t.clone()[start_idx:end_idx])
+        # Slice first, then clone — cloning the full tensor before slicing would
+        # peak at 2x the original allocation, which OOMs for large eval batches.
+        return self._apply(lambda t: t[start_idx:end_idx].clone())
 
     def get_new_object(self, **kwargs):
         """Return a new PlaceHolder with specified fields replaced, all tensor fields cloned."""
