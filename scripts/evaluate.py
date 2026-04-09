@@ -26,7 +26,7 @@ import sys
 from diffalign.utils import setup
 from diffalign.utils import mol
 from diffalign.helpers import set_seed
-from script_helpers import compute_condition_range, get_dataset_size
+from script_helpers import compute_condition_range
 
 log = logging.getLogger(__name__)
 parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
@@ -135,10 +135,6 @@ def main(cfg: DictConfig):
 
     # Dataset & slice statistics
     assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} is not a valid value.\n'
-    max_dataset_size = get_dataset_size(cfg, cfg.diffusion.edge_conditional_set)
-    condition_range = [condition_start_for_job, min(condition_start_for_job + int(cfg.test.n_conditions), max_dataset_size)]
-    log.info(f'condition_range: {condition_range}\n')
-    actual_n_conditions = condition_range[1] - condition_range[0] # handles the case where max_dataset_size < start+n_conditions
 
     # Load the data
     # file_path = samples_from_wandb(cfg.general.wandb.entity, cfg.general.wandb.run_id, cfg.general.wandb.project,
@@ -157,6 +153,12 @@ def main(cfg: DictConfig):
     log.info(f'sample_graph_data.X.shape {sample_graph_data.X.shape}\n')
     true_graph_data = true_graph_data.mask(collapse=True)
     sample_graph_data = sample_graph_data.mask(collapse=True)
+    # Derive actual_n_conditions from the loaded data (the file is the source of truth
+    # for how many conditions were actually sampled, which may differ from the config-based
+    # estimate due to dataset boundary effects).
+    actual_n_conditions = true_graph_data.X.shape[0] // cfg.test.n_samples_per_condition
+    condition_range = [condition_start_for_job, condition_start_for_job + actual_n_conditions]
+    log.info(f'actual_n_conditions (from data): {actual_n_conditions}\n')
     true_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=true_graph_data.X.shape[1])
     sample_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=sample_graph_data.X.shape[1])
     
