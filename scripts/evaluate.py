@@ -114,7 +114,7 @@ def main(cfg: DictConfig):
     sampling_steps = cfg.diffusion.diffusion_steps_eval
     num_gpus = torch.cuda.device_count()
 
-    total_index, _ = compute_condition_range(cfg)
+    total_index, condition_start_for_job = compute_condition_range(cfg)
     log.info(f'cfg.test.condition_first & slurm array index & total condition index {cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
     
     dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
@@ -136,8 +136,7 @@ def main(cfg: DictConfig):
     # Dataset & slice statistics
     assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} is not a valid value.\n'
     max_dataset_size = get_dataset_size(cfg, cfg.diffusion.edge_conditional_set)
-    condition_start_zero_indexed = int(total_index)*int(cfg.test.n_conditions) # zero-indexed because no condition_first here
-    condition_range = [condition_start_zero_indexed, min(int(condition_start_zero_indexed)+int(cfg.test.n_conditions), max_dataset_size)]
+    condition_range = [condition_start_for_job, min(condition_start_for_job + int(cfg.test.n_conditions), max_dataset_size)]
     log.info(f'condition_range: {condition_range}\n')
     actual_n_conditions = condition_range[1] - condition_range[0] # handles the case where max_dataset_size < start+n_conditions
 
@@ -145,7 +144,6 @@ def main(cfg: DictConfig):
     # file_path = samples_from_wandb(cfg.general.wandb.entity, cfg.general.wandb.run_id, cfg.general.wandb.project,
     #                     sampling_steps, epoch, total_conditions, cfg.test.n_samples_per_condition)
     # Assumes that hydra.run.dir is set to the same location as the samples
-    condition_start_for_job = int(cfg.test.condition_first) + int(total_index)*int(cfg.test.n_conditions)
     file_path = f"samples_epoch{epoch}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz"
     # How to get to experiments/if3aizpe_sample_ts/samples_epoch??_steps??_cond??_samplercond??_s{condition_first thing from sample_array_job}.gz?
     # just need the if3aizpe_sample_ts part. 

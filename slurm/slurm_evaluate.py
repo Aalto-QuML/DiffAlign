@@ -26,10 +26,11 @@ SAMPLES_DIR = 'experiments/align_absorbing_20260407_144212'
 
 SEED = 42
 OFFSET = 0
-START_ARRAY = 0
+START_ARRAY = 9
 # Inclusive last array index. For uspto-50k test set with N_CONDITIONS=1 use 4948
 # (4949 conditions). With N_CONDITIONS=k use ceil(4949 / k) - 1.
-END_ARRAY = 10
+END_ARRAY = 9
+
 TIME = '24:00:00'
 # On puhti/mahti, total memory per task = MEM * CPUS_PER_TASK (mem-per-cpu).
 # A single eval condition padded to ~250 nodes with N_SAMPLES=100 and
