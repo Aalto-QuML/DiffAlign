@@ -162,8 +162,9 @@ def main(cfg: DictConfig):
     true_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=true_graph_data.X.shape[1])
     sample_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=sample_graph_data.X.shape[1])
     
-    sample_graph_data = sample_graph_data.to_device(device)
-    true_graph_data = true_graph_data.to_device(device)
+    # NOTE: keep dense_data/final_samples on CPU here. evaluate_from_artifact slices
+    # them per condition and moves only the slice to `device`, so the full (bs*n_samples)
+    # tensors never need to live on the GPU.
     scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print = model.evaluate_from_artifact(dense_data=true_graph_data, final_samples=sample_graph_data, device=device, condition_range=condition_range, epoch=epoch)
     for i in range(len(placeholders_for_print)):
         original_data_placeholder = placeholders_for_print[i]

@@ -29,7 +29,7 @@ OFFSET = 0
 START_ARRAY = 0
 # Inclusive last array index. For uspto-50k test set with N_CONDITIONS=1 use 4948
 # (4949 conditions). With N_CONDITIONS=k use ceil(4949 / k) - 1.
-END_ARRAY = 0
+END_ARRAY = 10
 TIME = '24:00:00'
 # On puhti/mahti, total memory per task = MEM * CPUS_PER_TASK (mem-per-cpu).
 # A single eval condition padded to ~250 nodes with N_SAMPLES=100 and
@@ -43,6 +43,11 @@ MEM = '100G'
 # the value from the experiment yaml (100 for align_absorbing). Halving this
 # roughly halves the peak memory of compute_Lt_all.
 DIFFUSION_STEPS_EVAL = None
+# Chunk size for the per-condition n_samples batch when computing ELBOs. Set
+# this to a value < N_SAMPLES (e.g. 25 or 10) to lower GPU peak memory; the
+# model forward will be called more times but each call sees a smaller batch.
+# None or 0 disables chunking (single forward over the full N_SAMPLES batch).
+ELBO_BATCH_SIZE = 25
 # ---------------------------------------------------------------------------
 # /Users/laabidn1/DiffAlign/slurm/slurm_evaluate.py
 slurm_args = build_platform_info(
@@ -86,6 +91,8 @@ eval_args = {
 }
 if DIFFUSION_STEPS_EVAL is not None:
     eval_args['diffusion.diffusion_steps_eval'] = DIFFUSION_STEPS_EVAL
+if ELBO_BATCH_SIZE is not None:
+    eval_args['test.elbo_batch_size'] = ELBO_BATCH_SIZE
 
 script_args = {
     "script_dir": SCRIPT_DIR,
