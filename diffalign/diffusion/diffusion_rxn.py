@@ -478,11 +478,13 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
             t0 = time.time()
             true_rcts, true_prods = graph.split_reactions_to_reactants_and_products(true_rxn_smiles)
             true_rcts, true_prods = true_rcts[::n_samples], true_prods[::n_samples] # We don't want duplicates going into the topk calculation
-            topk = graph.calculate_top_k(self.cfg, elbo_sorted_rxns, true_rcts, true_prods)
-            topk_weighted = graph.calculate_top_k(self.cfg, weighted_prob_sorted_rxns, true_rcts, true_prods)
+            topk, mrr = graph.calculate_top_k(self.cfg, elbo_sorted_rxns, true_rcts, true_prods)
+            topk_weighted, mrr_weighted = graph.calculate_top_k(self.cfg, weighted_prob_sorted_rxns, true_rcts, true_prods)
 
             log.info(f"Done computing topk. Time: {time.time()-t0}")
 
+            scores['mrr'] = mrr
+            scores[f'mrr_weighted_{self.cfg.test.sort_lambda_value}'] = mrr_weighted
             for j, k_ in enumerate(self.cfg.test.topks):
                 scores[f'top-{k_}'] = topk[:,j]
                 scores[f'top-{k_}_weighted_{self.cfg.test.sort_lambda_value}'] = topk_weighted[:,j]
@@ -509,9 +511,11 @@ class DiscreteDenoisingDiffusionRxn(DiscreteDenoisingDiffusion):
         true_rcts, true_prods = mol.get_cano_list_smiles(X=true_nodes, E=true_edges, atom_types=self.dataset_info.atom_decoder,
                                                          bond_types=self.dataset_info.bond_decoder, plot_dummy_nodes=self.cfg.test.plot_dummy_nodes)
         gen_rxn_smiles = mol.get_cano_smiles_from_dense(X=final_samples.X, E=final_samples.E, atom_types=self.dataset_info.atom_decoder,
-                                                        bond_types=self.dataset_info.bond_decoder, return_dict=False)
+                                                        bond_types=self.dataset_info.bond_decoder, return_dict=False,
+                                                        atom_map_numbers=getattr(final_samples, 'atom_map_numbers', None))
         true_rxn_smiles = mol.get_cano_smiles_from_dense(X=true_data.X, E=true_data.E, atom_types=self.dataset_info.atom_decoder,
-                                                         bond_types=self.dataset_info.bond_decoder, return_dict=False)
+                                                         bond_types=self.dataset_info.bond_decoder, return_dict=False,
+                                                         atom_map_numbers=getattr(true_data, 'atom_map_numbers', None))
 
         unique_indices, counts, is_unique = graph.get_unique_indices_from_reaction_list(gen_rxn_smiles)
         # deselect

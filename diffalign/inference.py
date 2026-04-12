@@ -20,7 +20,14 @@ from hydra.core.global_hydra import GlobalHydra
 
 from diffalign.constants import BOND_TYPES
 from diffalign.utils.setup import dotdict, load_weights
-from diffalign.utils.mol import get_cano_smiles_from_dense, get_cano_smiles_with_atom_mapping
+from diffalign.utils.mol import (
+    get_cano_smiles_from_dense,
+    get_cano_smiles_with_atom_mapping,
+    match_atom_mapping_without_stereo,
+    transfer_chirality_from_product_to_reactant,
+    transfer_bond_dir_from_product_to_reactant,
+    remove_atom_mapping_from_mol,
+)
 from diffalign.utils.placeholder import PlaceHolder
 from diffalign.utils.graph_builder import build_rxn_graph
 from diffalign.diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn
@@ -192,8 +199,80 @@ def _ensure_transition_model(model, cfg, diffusion_steps):
         cfg.diffusion.diffusion_steps_eval = diffusion_steps
 
 
-def _decode_samples(final_samples, cfg):
+def _set_atom_map_from_dense(mol_obj, rdkit_to_dense, am_numbers):
+    """Set RDKit atom map numbers on *mol_obj* using the dense graph's atom_map_numbers.
+
+    Args:
+        mol_obj: RDKit Mol to annotate (modified in-place).
+        rdkit_to_dense: dict {rdkit_atom_idx: dense_node_idx} from
+            ``get_cano_smiles_with_atom_mapping``.
+        am_numbers: 1-D tensor of per-node atom-map numbers for this sample.
+    """
+    for rdkit_idx, dense_idx in rdkit_to_dense.items():
+        am = int(am_numbers[dense_idx])
+        if am > 0:
+            mol_obj.GetAtomWithIdx(rdkit_idx).SetAtomMapNum(am)
+
+
+def _transfer_stereo_to_reactant(rct_smiles, gen_prod_smiles, orig_product_mol, am_numbers, mol_infos):
+    """Transfer stereochemistry from the original product to a generated reactant.
+
+    Processes each reactant molecule individually to avoid atom-reordering issues
+    when parsing dot-separated SMILES.
+
+    Returns the stereo-corrected reactant SMILES, or the original if transfer fails.
+    """
+    try:
+        gen_prod_mol = Chem.MolFromSmiles(gen_prod_smiles)
+        if gen_prod_mol is None:
+            return rct_smiles
+
+        prod_info = mol_infos[-1]
+        _set_atom_map_from_dense(gen_prod_mol, prod_info['atom_map'], am_numbers)
+
+        orig_prod_copy = Chem.RWMol(Chem.MolFromSmiles(Chem.MolToSmiles(orig_product_mol)))
+        match_atom_mapping_without_stereo(gen_prod_mol, orig_prod_copy)
+
+        orig_smi = Chem.MolToSmiles(orig_prod_copy)
+        has_chiral = "@" in orig_smi
+        has_cistrans = "/" in orig_smi or "\\" in orig_smi
+
+        rct_infos = mol_infos[:-1] if len(mol_infos) > 1 else mol_infos
+        prod_side_ams = set(a.GetAtomMapNum() for a in gen_prod_mol.GetAtoms())
+
+        corrected_parts = []
+        for mi in rct_infos:
+            rct_mol = Chem.MolFromSmiles(mi['smiles'])
+            if rct_mol is None:
+                corrected_parts.append(mi['smiles'])
+                continue
+
+            _set_atom_map_from_dense(rct_mol, mi['atom_map'], am_numbers)
+            Chem.RemoveStereochemistry(rct_mol)
+
+            for a in rct_mol.GetAtoms():
+                if a.GetAtomMapNum() not in prod_side_ams:
+                    a.ClearProp('molAtomMapNumber')
+
+            if has_chiral:
+                rct_mol = transfer_chirality_from_product_to_reactant(rct_mol, orig_prod_copy)
+            if has_cistrans:
+                rct_mol = transfer_bond_dir_from_product_to_reactant(rct_mol, orig_prod_copy)
+
+            remove_atom_mapping_from_mol(rct_mol)
+            corrected_parts.append(Chem.MolToSmiles(rct_mol, canonical=True))
+
+        return '.'.join(corrected_parts)
+    except Exception:
+        return rct_smiles
+
+
+def _decode_samples(final_samples, cfg, product_smiles=None):
     """Decode final_samples into deduplicated results with atom mappings.
+
+    If *product_smiles* is provided and contains stereochemistry, transfers
+    stereo from the original product to each generated reactant via atom
+    mapping correspondence.
 
     Returns list of dicts: {precursors, score, sample_data, atom_mapping}
     """
@@ -201,6 +280,16 @@ def _decode_samples(final_samples, cfg):
         final_samples.X, final_samples.E,
         cfg.dataset.atom_types, BOND_TYPES,
     )
+
+    orig_product_mol = None
+    has_stereo = False
+    if product_smiles:
+        orig_product_mol = Chem.MolFromSmiles(product_smiles)
+        if orig_product_mol is not None:
+            smi = Chem.MolToSmiles(orig_product_mol)
+            has_stereo = ("@" in smi or "/" in smi or "\\" in smi)
+
+    am_numbers = final_samples.atom_map_numbers
 
     # Deduplicate by reactant SMILES, track which sample index produced each
     reactant_info = {}  # precursors -> {count, first_sample_idx}
@@ -217,9 +306,15 @@ def _decode_samples(final_samples, cfg):
         sample_idx = info['sample_idx']
         sample_ph = final_samples.select_by_batch_idx(sample_idx)
 
-        # atom_mapping for reactant molecules only (exclude last = product)
         mol_infos = all_atom_mappings[sample_idx]
         reactant_mol_infos = mol_infos[:-1] if len(mol_infos) > 1 else mol_infos
+
+        if has_stereo and am_numbers is not None:
+            gen_prod = all_rxn_str[sample_idx].split('>>')[-1] if '>>' in all_rxn_str[sample_idx] else ''
+            precursors = _transfer_stereo_to_reactant(
+                precursors, gen_prod, orig_product_mol,
+                am_numbers[sample_idx], mol_infos,
+            )
 
         results.append({
             'precursors': precursors,
@@ -268,7 +363,7 @@ def predict_precursors_from_diffalign(
         )
     log.info('Done sampling.')
 
-    results = _decode_samples(final_samples, cfg)
+    results = _decode_samples(final_samples, cfg, product_smiles=product_smiles)
     return results[:n_precursors]
 
 
@@ -331,7 +426,7 @@ def predict_with_inpainting(
         )
     log.info('Done inpainting sampling.')
 
-    results = _decode_samples(final_samples, cfg)
+    results = _decode_samples(final_samples, cfg, product_smiles=product_smiles)
     return results[:n_precursors]
 
 

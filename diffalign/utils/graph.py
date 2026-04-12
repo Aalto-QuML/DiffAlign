@@ -736,26 +736,33 @@ def reactions_sorted_with_weighted_prob(restructured_data, lambda_value):
     return restructured_data
 
 def calculate_top_k(cfg, elbo_sorted_rxns, true_rcts, true_prods):
-    # TODO: 
+    # TODO:
     # Previously this thing was used in two ways:
     # 1. true_rcts and true_prods has an entry for each individiual sample (wrong)
     # 2. true_rcts and true_prods has an entry for each individual condition (correct)
-    # elbo_sorted_rxns format: sorted list from most relevant to least relevant, with each element 
-    # being a dictionary {'rcts': [rct1, rct2, ...], 'prod': [prod], 
+    # elbo_sorted_rxns format: sorted list from most relevant to least relevant, with each element
+    # being a dictionary {'rcts': [rct1, rct2, ...], 'prod': [prod],
     #                     'elbo': float, 'loss_t': float, 'loss_0': float, 'count': int}
     # -> need to create true_rcts, true_prods from somewhere
     topk = {}
     true_smiles = [set(r).union(set(p)) for r,p in zip(true_rcts,true_prods)] # why a set here?
     bs = len(elbo_sorted_rxns.keys())
 
-    # compute topk accuracy
+    # compute topk accuracy and reciprocal rank
 
     topk = torch.zeros((bs, len(cfg.test.topks)), dtype=torch.float)
+    mrr = torch.zeros(bs, dtype=torch.float)
     for i, prod in enumerate(elbo_sorted_rxns.keys()): # This goes over the batch size
+        candidates = [set(s['rcts']).union(s['prod']) for s in elbo_sorted_rxns[prod]]
         for j, k_ in enumerate(cfg.test.topks):
-            topk[i,j] = (set(true_smiles[i]) in [set(s['rcts']).union(s['prod']) for s in elbo_sorted_rxns[prod][:k_]]) # is the true smiles in the topk for each product?
-    
-    return topk
+            topk[i,j] = (set(true_smiles[i]) in candidates[:k_]) # is the true smiles in the topk for each product?
+        # reciprocal rank: 1/rank of first correct match (0 if not found)
+        for rank, cand in enumerate(candidates, 1):
+            if set(true_smiles[i]) == cand:
+                mrr[i] = 1.0 / rank
+                break
+
+    return topk, mrr
 
 def split_reactions_to_reactants_and_products(reactions):
     rcts = [r.split('>>')[0].split('.') for r in reactions]

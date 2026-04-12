@@ -9,6 +9,8 @@ from diffalign.utils import graph
 from rdkit.Chem.rdchem import BondType as BT
 from rdkit.Chem import rdChemReactions as Reactions
 from rdkit.Chem import Draw
+from rdkit.Chem import rdmolops
+from rdkit.Chem import AllChem
 import logging
 log = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ def get_cano_list_smiles(X, E, atom_types, bond_types, plot_dummy_nodes=False):
 
     return all_rcts, all_prods
 
-def get_cano_smiles_from_dense(X, E, atom_types, bond_types, return_dict=False):     
+def get_cano_smiles_from_dense(X, E, atom_types, bond_types, return_dict=False, atom_map_numbers=None):
     '''
         Returns canonical smiles of all the molecules in a reaction
         given a dense matrix representation of said reaction.
@@ -94,36 +96,43 @@ def get_cano_smiles_from_dense(X, E, atom_types, bond_types, return_dict=False):
 
         X: nodes of a reaction in matrix dense format. (bs*n_samples, n)
         E: Edges of a reaction in matrix dense format. (bs*n_samples, n, n)
+        atom_map_numbers: optional atom mapping numbers (bs*n_samples, n). If provided,
+            output SMILES will include atom map numbers.
 
         return: list of smiles of valid molecules from rxn.
-    '''   
+    '''
     assert X.ndim==2 and E.ndim==3,\
             'Expects batched X of shape (bs*n_samples, n), and batched E of shape (bs*n_samples, n, n).' \
-            + f' Got X.shape={X.shape} and E.shape={E.shape} instead.'       
+            + f' Got X.shape={X.shape} and E.shape={E.shape} instead.'
 
     suno_idx = atom_types.index('SuNo') # offset because index 0 is for no node
 
     all_smiles = {}
     all_rxn_str = []
     for j in range(X.shape[0]): # for each rxn in batch
-        #print(f'j {j}\n')
-        suno_indices = (X[j,:]==suno_idx).nonzero(as_tuple=True)[0].cpu() 
+        suno_indices = (X[j,:]==suno_idx).nonzero(as_tuple=True)[0].cpu()
         cutoff = 1 if 0 in suno_indices else 0
         atoms = torch.tensor_split(X[j,:], suno_indices, dim=-1)[cutoff:] # ignore first set (SuNo)
         edges = torch.tensor_split(E[j,:,:], suno_indices, dim=-1)[cutoff:]
+        if atom_map_numbers is not None:
+            am_split = torch.tensor_split(atom_map_numbers[j,:], suno_indices, dim=-1)[cutoff:]
+        else:
+            am_split = None
 
         rxn_smiles = []
         rxn_str = ''
         for i, mol_atoms in enumerate(atoms): # for each mol in rxn
             cutoff = 1 if 0 in suno_indices else 0
-            mol_edges_to_all = edges[i] 
+            mol_edges_to_all = edges[i]
             mol_edges_t = torch.tensor_split(mol_edges_to_all, suno_indices, dim=0)[cutoff:]
             mol_edges = mol_edges_t[i]
             cutoff = 1 if suno_idx in mol_atoms else 0
             mol_atoms = mol_atoms[cutoff:] # (n-1)
             mol_edges = mol_edges[cutoff:,:][:,cutoff:] # (n-1, n-1)
-            mol = mol_from_graph(node_list=mol_atoms, adjacency_matrix=mol_edges, 
-                                 atom_types=atom_types, bond_types=bond_types)                     
+            mol_am = am_split[i][cutoff:] if am_split is not None else None
+            mol = mol_from_graph(node_list=mol_atoms, adjacency_matrix=mol_edges,
+                                 atom_types=atom_types, bond_types=bond_types,
+                                 atom_map_numbers=mol_am)
             smiles = Chem.MolToSmiles(mol, kekuleSmiles=True, isomericSmiles=True)
             
             if i<len(atoms)-2: # if the mol is not the last reactant
@@ -336,27 +345,25 @@ def mol_to_graph(mol, atom_types, bond_types, offset=0, with_explicit_h=True, wi
     else:
         return m_nodes, m_edge_index, m_edge_attr, atom_map
 
-def mol_from_graph(node_list, adjacency_matrix, atom_types, bond_types, plot_dummy_nodes=False):
+def mol_from_graph(node_list, adjacency_matrix, atom_types, bond_types, plot_dummy_nodes=False, atom_map_numbers=None):
     """
         Convert graphs to RDKit molecules.
 
         node_list: the nodes of one molecule (n)
         adjacency_matrix: the adjacency_matrix of the molecule (n, n)
+        atom_map_numbers: optional per-node atom mapping numbers (n). If provided,
+            each non-padding atom will have its atom map number set to the corresponding
+            entry. Zero entries are treated as "no mapping" and left unset.
 
         return: RDKit's editable mol object.
     """
-    # fc = node_list[...,-1] # get formal charge of each atom 
-    # node_list = torch.argmax(node_list[...,:-1], dim=-1) 
-    # adjacency_matrix = torch.argmax(adjacency_matrix, dim=-1) 
-    # create empty editable mol object
-        
     mol = Chem.RWMol()
     if not plot_dummy_nodes:
         masking_atom = atom_types.index('U') if 'U' in atom_types else 0
     else:
         masking_atom = 0
 
-    node_to_idx = {} # needed because using 0 to mark node paddings 
+    node_to_idx = {} # needed because using 0 to mark node paddings
     # add atoms to mol and keep track of index
     for i in range(len(node_list)):
         # ignore padding nodes
@@ -367,6 +374,10 @@ def mol_from_graph(node_list, adjacency_matrix, atom_types, bond_types, plot_dum
         s = re.split('[-+]\d+', at)[0]
         a = Chem.Atom(s)
         if len(fc)!=0: a.SetFormalCharge(int(fc[0]))
+        if atom_map_numbers is not None:
+            am = int(atom_map_numbers[i])
+            if am > 0:
+                a.SetAtomMapNum(am)
         molIdx = mol.AddAtom(a)
         node_to_idx[i] = molIdx
 
@@ -659,4 +670,189 @@ def check_valid_reactants_in_rxn(X, E, true_rxn_smiles, n_samples, atom_types, b
         atleastone_valid[j] = float((all_valid_per_sample>0) and all_mols_in_rcts>0)
 
     return all_valid, atleastone_valid, gen_rxns
+
+
+# --- Stereochemistry transfer helpers ---
+
+def are_same_cycle(l1, l2):
+    """Inputs:
+    l1, l2: Lists of indices of length 3
+    Outputs:
+    True if the two lists follow the same extended cycle, False otherwise.
+    'cycle' meaning, e.g., l1=(2,1,3) -> (...,2,3,1,2,3,1,...)
+    """
+    l1 = l1 * 2
+    for i in range(len(l1) - 2):
+        if l1[i] == l2[0] and l1[i + 1] == l2[1] and l1[i + 2] == l2[2]:
+            return True
+    return False
+
+
+def order_of_pair_of_indices_in_cycle(idx1, idx2, cycle):
+    """Inputs:
+    idx1, idx2: indices of atoms that should be present in the list 'cycle'
+    cycle: list of 3 atom indices that are interpreted to be cyclical, e.g., [2,3,1,2,3,1,...]
+    Outputs:
+    A tuple consisting of idx1 and idx2, where the order is the one in which they appear next to each other in the extended cycle
+    (e.g., idx1=2, idx2=1, cycle=[2,3,1] -> (1,2))
+    """
+    cycle = cycle * 2
+    for i in range(len(cycle * 2) - 1):
+        if cycle[i] == idx1 and cycle[i + 1] == idx2:
+            return (idx1, idx2)
+        if cycle[i] == idx2 and cycle[i + 1] == idx1:
+            return (idx2, idx1)
+    raise ValueError("The indices are not in the cycle")
+
+
+def get_opposite_chiral_tag(atom):
+    if atom == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
+        return Chem.ChiralType.CHI_TETRAHEDRAL_CW
+    elif atom == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
+        return Chem.ChiralType.CHI_TETRAHEDRAL_CCW
+    return None
+
+
+def get_cip_ranking(mol):
+    """
+    Gets a type of CIP ranking of the atoms in the molecule such that the ranking is unique for each atom in the molecule.
+    The ranking ignores the stereochemistry of the molecule, since we want to get the ranking for sampled molecules precisely
+    to be able to set the stereochemistry consistently.
+    """
+    m_copy = copy.deepcopy(mol)
+    for atom in m_copy.GetAtoms():
+        atom.SetAtomMapNum(0)
+    try:
+        rdmolops.RemoveStereochemistry(m_copy)
+        m_copy.UpdatePropertyCache()
+        AllChem.EmbedMolecule(m_copy)
+        cip_ranks = list(AllChem.CanonicalRankAtoms(m_copy))
+    except Exception as e:
+        log.info(f"Caught an exception while trying to get CIP ranking: {e}")
+        cip_ranks = list(range(m_copy.GetNumAtoms()))
+    return cip_ranks
+
+
+def switch_between_bond_cw_ccw_label_and_cip_based_label(atom, cw_ccw_label, cip_ranking):
+    """
+    Transforms a CW/CCW chiral label between bond-index-based and CIP-based representations.
+    If CW/CCW was originally bond-based, the output is the corresponding CIP-based label, and vice versa.
+    """
+    if cw_ccw_label == Chem.ChiralType.CHI_UNSPECIFIED:
+        return Chem.ChiralType.CHI_UNSPECIFIED
+    nbrs = [(x.GetOtherAtomIdx(atom.GetIdx()), x.GetIdx()) for x in atom.GetBonds()]
+    s_nbrs = sorted(nbrs, key=lambda x: cip_ranking[x[0]])
+    if len(nbrs) == 3:
+        order_based_on_bonds = [x.GetOtherAtomIdx(atom.GetIdx()) for x in atom.GetBonds()]
+        order_based_on_bonds_with_cip = [(idx, cip_ranking[idx]) for idx in order_based_on_bonds]
+        order_based_on_cip = list(map(lambda x: x[0], sorted(order_based_on_bonds_with_cip, key=lambda x: x[1])))
+        if are_same_cycle(order_based_on_bonds, order_based_on_cip):
+            return cw_ccw_label
+        return get_opposite_chiral_tag(cw_ccw_label)
+    elif len(nbrs) == 4:
+        leading_bond_order_representation = nbrs[0]
+        leading_atom_representation = s_nbrs[0]
+        if leading_bond_order_representation == leading_atom_representation:
+            order_based_on_bonds = [x.GetOtherAtomIdx(atom.GetIdx()) for x in atom.GetBonds()][1:]
+            order_based_on_bonds_with_cip = [(idx, cip_ranking[idx]) for idx in order_based_on_bonds]
+            order_based_on_cip = list(map(lambda x: x[0], sorted(order_based_on_bonds_with_cip, key=lambda x: x[1])))
+            if are_same_cycle(order_based_on_bonds, order_based_on_cip):
+                return cw_ccw_label
+            return get_opposite_chiral_tag(cw_ccw_label)
+        else:
+            remaining_neighbor_indices_bond_order_based = [x[0] for x in nbrs[1:]]
+            remaining_neighbor_indices_cip_based = [x[0] for x in s_nbrs[1:]]
+            remaining_two_atoms = [x for x in remaining_neighbor_indices_bond_order_based if x in remaining_neighbor_indices_cip_based]
+            order_of_remaining_pair_bond_order_based = order_of_pair_of_indices_in_cycle(
+                remaining_two_atoms[0], remaining_two_atoms[1], remaining_neighbor_indices_bond_order_based)
+            order_of_remaining_pair_atom_index_based = order_of_pair_of_indices_in_cycle(
+                remaining_two_atoms[0], remaining_two_atoms[1], remaining_neighbor_indices_cip_based)
+            if order_of_remaining_pair_bond_order_based == order_of_remaining_pair_atom_index_based:
+                return get_opposite_chiral_tag(cw_ccw_label)
+            else:
+                return cw_ccw_label
+    else:
+        return Chem.ChiralType.CHI_UNSPECIFIED
+
+
+def match_atom_mapping(mol1, mol2):
+    """Changes the atom mapping in mol2 to match with the convention in mol1."""
+    match = mol2.GetSubstructMatch(mol1)
+    for idx1, idx2 in enumerate(match):
+        if idx2 >= 0:
+            mol2.GetAtomWithIdx(idx2).SetAtomMapNum(
+                mol1.GetAtomWithIdx(idx1).GetAtomMapNum()
+            )
+
+
+def match_atom_mapping_without_stereo(mol1, mol2):
+    """Changes the atom mapping in mol2 to match with the convention in mol1,
+    assumes that mol1 and mol2 are the same up to stereochemistry."""
+    mol2_copy = copy.deepcopy(mol2)
+    Chem.RemoveStereochemistry(mol2_copy)
+    match_atom_mapping(mol1, mol2_copy)
+    for atom2_copy, atom2 in zip(mol2_copy.GetAtoms(), mol2.GetAtoms()):
+        atom2.SetAtomMapNum(atom2_copy.GetAtomMapNum())
+
+
+def transfer_bond_dir_from_product_to_reactant(r_mol, p_mol):
+    """Transfers cis/trans bond directions from product to reactant using atom mappings."""
+    r_mol_new = copy.deepcopy(r_mol)
+
+    am_pair_to_bonddir = {}
+    for bond in p_mol.GetBonds():
+        if bond.GetBondDir() != Chem.BondDir.NONE:
+            begin_atom = bond.GetBeginAtom()
+            end_atom = bond.GetEndAtom()
+            am_pair_to_bonddir[
+                (begin_atom.GetAtomMapNum(), end_atom.GetAtomMapNum())
+            ] = bond.GetBondDir()
+
+    for bond in r_mol_new.GetBonds():
+        key_fwd = (bond.GetBeginAtom().GetAtomMapNum(), bond.GetEndAtom().GetAtomMapNum())
+        key_rev = (bond.GetEndAtom().GetAtomMapNum(), bond.GetBeginAtom().GetAtomMapNum())
+        if key_fwd in am_pair_to_bonddir:
+            bond.SetBondDir(am_pair_to_bonddir[key_fwd])
+        elif key_rev in am_pair_to_bonddir:
+            bond.SetBondDir(am_pair_to_bonddir[key_rev])
+
+    return r_mol_new
+
+
+def transfer_chirality_from_product_to_reactant(r_mol, p_mol):
+    """Transfers chiral tags from product to reactant using atom mappings."""
+    from diffalign.utils import mol as mol_module
+
+    r_mol_new = copy.deepcopy(r_mol)
+    am_to_am_of_neighbors_prod = {}
+    am_to_chiral_tag = {}
+    for atom in p_mol.GetAtoms():
+        if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED:
+            nbrs = [(x.GetOtherAtomIdx(atom.GetIdx()), x.GetIdx()) for x in atom.GetBonds()]
+            atom_maps_of_neighbors = [p_mol.GetAtomWithIdx(x[0]).GetAtomMapNum() for x in nbrs]
+            am_to_am_of_neighbors_prod[atom.GetAtomMapNum()] = atom_maps_of_neighbors
+            am_to_chiral_tag[atom.GetAtomMapNum()] = atom.GetChiralTag()
+
+    for atom in r_mol_new.GetAtoms():
+        if atom.GetAtomMapNum() in am_to_am_of_neighbors_prod:
+            am_nbrs_prod = am_to_am_of_neighbors_prod[atom.GetAtomMapNum()]
+            nbrs = [x.GetOtherAtomIdx(atom.GetIdx()) for x in atom.GetBonds()]
+            am_to_rank_prod = {am: idx for idx, am in enumerate(am_nbrs_prod)}
+            try:
+                nbr_idx_to_rank_prod = {
+                    nbr_idx: am_to_rank_prod[r_mol.GetAtomWithIdx(nbr_idx).GetAtomMapNum()]
+                    for nbr_idx in nbrs
+                }
+                cw_ccw = mol_module.switch_between_bond_cw_ccw_label_and_cip_based_label(
+                    atom, am_to_chiral_tag[atom.GetAtomMapNum()], nbr_idx_to_rank_prod
+                )
+            except:
+                cw_ccw = Chem.ChiralType.CHI_TETRAHEDRAL_CCW
+            atom.SetChiralTag(cw_ccw)
+    return r_mol_new
+
+
+def remove_atom_mapping_from_mol(mol):
+    [a.ClearProp("molAtomMapNumber") for a in mol.GetAtoms()]
+    return mol
 
