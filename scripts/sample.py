@@ -1,24 +1,36 @@
 '''
     Sampling from a trained model.
 '''
-from omegaconf import DictConfig, OmegaConf
+import logging
 import os
 import pathlib
-import warnings
-import torch
-import hydra
-import logging
+import sys
 import time
+import warnings
+from pathlib import Path
 
-# A logger for this file
-log = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import hydra
+import torch
 from omegaconf import DictConfig
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
-from diffalign.utils import graph, setup
-from diffalign.helpers import set_seed
-from script_helpers import compute_condition_range
+from diffalign.sampling.helpers import (
+    build_data_slices,
+    build_output_paths,
+    compute_condition_range,
+    load_weights_for_inference,
+    run_sampling,
+    save_sampling_outputs,
+)
+from diffalign.training.helpers import (
+    build_dataloaders_and_infos,
+    build_model_and_train_objects,
+    setup_experiment,
+)
+
+log = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -27,19 +39,10 @@ parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
 
 os.environ['WANDB__SERVICE_WAIT'] = '1000'
 
+
 @hydra.main(version_base='1.1', config_path='../configs', config_name='default')
 def sample(cfg: DictConfig):
-    set_seed(cfg.train.seed)
-
-    cli_overrides = setup.capture_cli_overrides()
-    log.info(f'cli_overrides {cli_overrides}\n')
-
-    if cfg.general.wandb.mode=='online':
-        run, cfg = setup.setup_wandb(cfg, job_type='ranking')
-
-    if cfg.general.wandb.load_run_config:
-        run_config = setup.load_wandb_config(cfg)
-        cfg = setup.merge_configs(default_cfg=cfg, new_cfg=run_config, cli_overrides=cli_overrides)
+    _run, cfg, _cli = setup_experiment(cfg, job_type='ranking')
 
     log.info(f"Random seed: {cfg.train.seed}")
     log.info(f"Shuffling on: {cfg.dataset.shuffle}")
@@ -52,63 +55,53 @@ def sample(cfg: DictConfig):
     sampling_steps = cfg.diffusion.diffusion_steps_eval
 
     total_index, condition_start_for_job = compute_condition_range(cfg)
-    log.info(f'cfg.test.condition_first & slurm array index & total condition index {cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
+    log.info(f'cfg.test.condition_first & slurm array index & total condition index '
+             f'{cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
     log.info(f"Condition start: {condition_start_for_job}")
-    data_slices = {'train': None, 'val': None, 'test': None}
-    data_slices[cfg.diffusion.edge_conditional_set] = [int(condition_start_for_job), int(condition_start_for_job)+int(cfg.test.n_conditions)]
+    data_slices = build_data_slices(cfg, condition_start_for_job)
     print(f'data_slices {data_slices}\n')
-    dataloaders, dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
-                                                   shuffle=cfg.dataset.shuffle, return_datamodule=True, recompute_info=False, slices=data_slices)
-    
-    model, optimizer, scheduler, scaler, start_epoch = setup.get_model_and_train_objects(cfg, model_class=setup.task_to_class_and_model[cfg.general.task]['model_class'], 
-                                                                                         model_kwargs={'dataset_infos': dataset_infos, 
-                                                                                                       'node_type_counts_unnormalized': dataset_infos.node_types_unnormalized,
-                                                                                                       'edge_type_counts_unnormalized': dataset_infos.edge_types_unnormalized,
-                                                                                                       'use_data_parallel': device_count>1},
-                                                                                         parent_path=parent_path, savedir=os.path.join(parent_path, 'experiments'), 
-                                                                                         load_weights_bool=False, device=device, device_count=device_count)
+
+    dataloaders, dataset_infos = build_dataloaders_and_infos(cfg, slices=data_slices)
+    model, optimizer, scheduler, scaler, _start_epoch = build_model_and_train_objects(
+        cfg, run=None, dataset_infos=dataset_infos,
+        parent_path=parent_path,
+        savedir=os.path.join(parent_path, 'experiments'),
+        device=device, device_count=device_count,
+        use_data_parallel=device_count > 1,
+        load_weights_bool=False,
+    )
     log.info("2!------------------------------------------------")
     log.info(f": {cfg}")
     log.info(f": {cfg.general}")
     log.info(f": {cfg.general.wandb}")
-    # 4. load the weights to the model
-    savedir = os.path.join(parent_path, "checkpoints")
-    print(f'savedir {savedir}')
-    model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch_num, savedir, model, optimizer, 
-                                                                                                            scheduler, scaler, device_count=device_count)
-    # 5. sample n_conditions and n_samples_per_condition
-    output_dir = cfg.test.output_dir if cfg.test.output_dir else os.path.join(parent_path, "experiments")
-    os.makedirs(output_dir, exist_ok=True)
-    output_file_smiles = os.path.join(
-        output_dir,
-        f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.txt'
+
+    model, optimizer, scheduler, scaler, _artifact = load_weights_for_inference(
+        cfg, epoch_num, parent_path=parent_path, model=model,
+        optimizer=optimizer, scheduler=scheduler, scaler=scaler, device_count=device_count,
     )
-    output_file_pyg = os.path.join(
-        output_dir,
-        f'samples_epoch{epoch_num}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz'
+
+    output_file_smiles, output_file_pyg = build_output_paths(
+        cfg, parent_path=parent_path,
+        epoch_num=epoch_num, sampling_steps=sampling_steps,
+        condition_start_for_job=condition_start_for_job,
     )
-    dataloader = dataloaders[cfg.diffusion.edge_conditional_set]
+
     t0 = time.time()
     log.info(f'About to sample n_conditions={cfg.test.n_conditions}\n')
-    all_gen_rxn_smiles, all_true_rxn_smiles, all_gen_rxn_pyg, all_true_rxn_pyg = model.sample_n_conditions(
-                                dataloader=dataloader, epoch_num=epoch_num, device_to_use=None,  inpaint_node_idx=None, 
-                                inpaint_edge_idx=None)
-    # Save the results to a file
-    for i in range(len(all_gen_rxn_smiles)):
-        true_rxn_smiles = all_true_rxn_smiles[i]
-        gen_rxn_smiles = all_gen_rxn_smiles[i]
-        true_rcts_smiles = [rxn.split('>>')[0].split('.') for rxn in true_rxn_smiles]
-        true_prods_smiles = [rxn.split('>>')[1].split('.') for rxn in true_rxn_smiles]
-        print(f'saving to file {output_file_smiles}')
-        graph.save_gen_rxn_smiles_to_file(output_file_smiles, condition_idx=condition_start_for_job+i, 
-                                        gen_rxns=gen_rxn_smiles, true_rcts=true_rcts_smiles[0], true_prods=true_prods_smiles[0])
-    # Save the sparse format generated graphs to a file (includes atom-mapping information) all_true_rxn_pyg
-    graph.save_gen_rxn_pyg_to_file(filename=output_file_pyg, gen_rxns_pyg=all_gen_rxn_pyg, true_rxns_pyg=all_true_rxn_pyg)
+    all_gen_rxn_smiles, all_true_rxn_smiles, all_gen_rxn_pyg, all_true_rxn_pyg = run_sampling(
+        model, dataloaders, cfg, epoch_num,
+    )
+    save_sampling_outputs(
+        output_file_smiles=output_file_smiles, output_file_pyg=output_file_pyg,
+        all_gen_rxn_smiles=all_gen_rxn_smiles, all_true_rxn_smiles=all_true_rxn_smiles,
+        all_gen_rxn_pyg=all_gen_rxn_pyg, all_true_rxn_pyg=all_true_rxn_pyg,
+        condition_start_for_job=condition_start_for_job,
+    )
 
     log.info(f'===== Total sampling time: {time.time()-t0}\n')
-    
+
+
 if __name__ == '__main__':
-    # main()
     try:
         sample()
     except Exception as e:

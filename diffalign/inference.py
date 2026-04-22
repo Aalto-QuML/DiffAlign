@@ -9,7 +9,7 @@ import os
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 import torch
 from torch_geometric.data import Batch
@@ -373,8 +373,13 @@ def predict_with_inpainting(
     inpaint_node_indices: List[int],
     n_precursors: int = 1,
     diffusion_steps: int = 1,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """Re-generate precursors while keeping selected atoms fixed (inpainting).
+
+    A sample is considered valid only if at least one of the user-requested
+    change atoms (real atoms NOT in *inpaint_node_indices*) actually differs
+    from the original. Samples that regenerated to identical structures on
+    every change-atom are filtered out.
 
     Args:
         product_smiles: Target product SMILES.
@@ -384,7 +389,15 @@ def predict_with_inpainting(
         diffusion_steps: Number of diffusion steps.
 
     Returns:
-        List of result dicts with precursors, score, sample_data, atom_mapping.
+        Tuple (results, failure_info).
+        - results: list of result dicts with precursors, score, sample_data,
+          atom_mapping. Empty if every sample failed the constraint.
+        - failure_info: None on success. When results is empty, a dict with:
+            n_samples: how many samples were generated.
+            requested_change_atoms: [{index, element}, ...] — atoms the user
+              asked to change.
+            stuck_atoms: [{index, element}, ...] — subset that stayed the same
+              in every sample.
     """
     model, cfg = get_model_and_cfg()
     _ensure_transition_model(model, cfg, diffusion_steps)
@@ -400,6 +413,19 @@ def predict_with_inpainting(
             if 0 <= ni < E_collapsed.shape[0] and 0 <= nj < E_collapsed.shape[1]:
                 if int(E_collapsed[ni, nj]) != 0:
                     inpaint_edge_indices.append([ni, nj])
+
+    # Snapshot the collapsed original atom types AND edges BEFORE one-hot —
+    # used later for the constraint check (atom-type diff OR bond diff) and
+    # failure diagnostics.
+    orig_X_collapsed = (
+        dense_data.X[0].clone() if dense_data.X.ndim == 2
+        else dense_data.X[0].argmax(dim=-1).clone()
+    )
+    orig_E_collapsed = (
+        dense_data.E[0].clone() if dense_data.E.ndim == 3
+        else dense_data.E[0].argmax(dim=-1).clone()
+    )
+    node_mask_row = dense_data.node_mask[0] if dense_data.node_mask is not None else None
 
     # The serialized sample was collapsed (argmax'd): X is (1, n), E is (1, n, n).
     # sample_for_condition expects one-hot: X (1, n, dx), E (1, n, n, de).
@@ -426,8 +452,106 @@ def predict_with_inpainting(
         )
     log.info('Done inpainting sampling.')
 
-    results = _decode_samples(final_samples, cfg, product_smiles=product_smiles)
-    return results[:n_precursors]
+    # ── Hard constraint check: at least one change-atom must differ ────────
+    # sample_for_condition can return X either one-hot (n_samples, n_nodes, dx)
+    # or already-collapsed (n_samples, n_nodes). Normalize to collapsed 2D.
+    if final_samples.X.ndim == 3:
+        new_X_collapsed = final_samples.X.argmax(dim=-1)
+    elif final_samples.X.ndim == 2:
+        new_X_collapsed = final_samples.X.long()
+    else:
+        new_X_collapsed = final_samples.X.long().unsqueeze(0)
+    n_samples_actual = int(new_X_collapsed.shape[0])
+
+    if node_mask_row is not None:
+        real_idx_set = set(torch.where(node_mask_row)[0].tolist())
+    else:
+        real_idx_set = set(range(int(new_X_collapsed.shape[1])))
+    keep_set = {int(i) for i in inpaint_node_indices if int(i) in real_idx_set}
+    change_idx_list = sorted(real_idx_set - keep_set)
+
+    # Filter out structural placeholders. 'none', 'U', 'Au', and 'SuNo' are
+    # padding / supernode / absorbing-state types — they never correspond to
+    # atoms the user can see or change, so they must not contaminate either
+    # the strict "all change-atoms must differ" check or the stuck-atoms
+    # failure message.
+    atom_decoder = cfg.dataset.atom_types
+    _PLACEHOLDER_TYPES = {'none', 'U', 'Au', 'SuNo'}
+    change_idx_list = [
+        i for i in change_idx_list
+        if atom_decoder[int(orig_X_collapsed[i])] not in _PLACEHOLDER_TYPES
+    ]
+
+    failure_info: Optional[Dict[str, Any]] = None
+
+    if len(change_idx_list) == 0:
+        # Degenerate case: user fixed every real atom. The API layer should
+        # have rejected this already, but if we reach here keep all samples.
+        log.warning("Inpainting called with no change-atoms; skipping constraint check.")
+        filtered_samples = final_samples
+    else:
+        change_idx_tensor = torch.tensor(
+            change_idx_list, device=new_X_collapsed.device, dtype=torch.long,
+        )
+        orig_at_change = orig_X_collapsed.to(new_X_collapsed.device)[change_idx_tensor]
+        # (n_samples, |change|): True where the new atom TYPE differs.
+        atom_diff = new_X_collapsed[:, change_idx_tensor] != orig_at_change
+
+        # Bond-change check: for each change-atom, True if any bond incident to
+        # it differs from the original. This catches the case where the sampler
+        # kept the same atom type but rewired the connectivity — keeping "CCC"
+        # at those indices but with different neighbors is still a real change.
+        new_E = final_samples.E
+        if new_E.ndim == 4:
+            new_E_collapsed = new_E.argmax(dim=-1)
+        elif new_E.ndim == 3:
+            new_E_collapsed = new_E.long()
+        else:
+            new_E_collapsed = new_E.long().unsqueeze(0)
+        orig_E_dev = orig_E_collapsed.to(new_E_collapsed.device)
+        # (n_samples, |change|, n_nodes)
+        bond_rows_diff = (
+            new_E_collapsed[:, change_idx_tensor, :] != orig_E_dev[change_idx_tensor, :].unsqueeze(0)
+        )
+        bond_diff = bond_rows_diff.any(dim=-1)
+
+        # An atom counts as "changed" if its type differs OR any of its bonds do.
+        diff_per_atom = atom_diff | bond_diff
+        # Strict constraint: every selected change-atom must differ.
+        changed_per_sample = diff_per_atom.all(dim=1)          # (n_samples,)
+        changed_per_atom = diff_per_atom.any(dim=0)            # (|change|,)
+
+        n_kept = int(changed_per_sample.sum())
+        log.info(
+            f"Inpainting constraint: {n_kept}/{n_samples_actual} samples "
+            f"changed every selected atom (type or bond)."
+        )
+
+        if n_kept == 0:
+            # stuck = atoms that stayed unchanged in every sample
+            stuck_positions = [
+                change_idx_list[i] for i in range(len(change_idx_list))
+                if not bool(changed_per_atom[i])
+            ]
+            stuck_atoms = [
+                {'index': pos, 'element': atom_decoder[int(orig_X_collapsed[pos])]}
+                for pos in stuck_positions
+            ]
+            requested_change_atoms = [
+                {'index': pos, 'element': atom_decoder[int(orig_X_collapsed[pos])]}
+                for pos in change_idx_list
+            ]
+            failure_info = {
+                'n_samples': n_samples_actual,
+                'requested_change_atoms': requested_change_atoms,
+                'stuck_atoms': stuck_atoms,
+            }
+            return [], failure_info
+
+        filtered_samples = final_samples.select_subset(changed_per_sample)
+
+    results = _decode_samples(filtered_samples, cfg, product_smiles=product_smiles)
+    return results[:n_precursors], None
 
 
 def predict_precursors(

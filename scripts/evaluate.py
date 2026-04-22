@@ -1,196 +1,104 @@
 '''
 Evaluate the samples saved as wandb artifacts.
 '''
-# A script that takes a run id, (a list of epochs) that we have good evaluations for, and updates new re-ranked evaluations to wandb. Also the lambda re-ranking value.
-# What we need:
-# 1. The run id
-# 2. The list of epochs for which we have results from wandb automatically
-# retrieve the correct data from wandb for a given run id and epoch
-# get the config file for the run, and create a model based on it (from diffusion.diffusion_rxn import DiscreteDenoisingDiffusionRxn)
-# Then transform the samples.txt data into the elbo_ranked format
-# Then get weighted_prob_sorted_rxns = graph.reactions_sorted_with_weighted_prob(elbo_sorted_rxns, self.cfg.test.sort_lambda_value)
-# true_rcts, true_prods = graph.split_reactions_to_reactants_and_products(true_rxn_smiles)
-# topk_weighted = graph.calculate_top_k(self, weighted_prob_sorted_rxns, true_rcts, true_prods)
+import logging
 import os
-from diffalign.utils import wandb_utils, io_utils, graph
-import wandb
-from omegaconf import OmegaConf, DictConfig
-import numpy as np
-import pickle
+import pathlib
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import hydra
 import torch
-import logging
-import pathlib
-import re
-import sys
-from diffalign.utils import setup
-from diffalign.utils import mol
-from diffalign.helpers import set_seed
-from script_helpers import compute_condition_range
+from omegaconf import DictConfig
+
+from diffalign.evaluation.helpers import (
+    build_samples_filepath,
+    compute_condition_range,
+    dump_scores_pickle,
+    load_and_reshape_samples,
+    write_evaluation_outputs,
+)
+from diffalign.sampling.helpers import load_weights_for_inference
+from diffalign.training.helpers import (
+    build_dataloaders_and_infos,
+    build_model_and_train_objects,
+    setup_experiment,
+)
 
 log = logging.getLogger(__name__)
 parent_path = pathlib.Path(os.path.realpath(__file__)).parents[1]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def samples_from_wandb(entity, project, run_id, sampling_steps, epoch, total_conditions, n_samples_per_condition):
-    # 1. get samples artifact from run_id
-    collection_name = f"{run_id}_samples"
-    api = wandb.Api()
-    collections = [
-        coll for coll in api.artifact_type(type_name='samples', project=f"{entity}/{project}").collections()
-        if coll.name==collection_name
-    ]
-    assert len(collections)==1, f'Found {len(collections)} collections with name {collection_name}, expected 1.'
-    
-    coll = collections[0]
-    # aliases = [alias for art in coll.versions() for alias in art.aliases \
-    #                  if 'samples' in alias
-    #                  and re.findall('steps\d+', alias)[0]==f'steps{sampling_steps}'
-    #                  and re.findall('epoch\d+', alias)[0]==f'epoch{epoch}'
-    #                  and re.findall('cond\d+', alias)[0]==f'cond{cfg.test.total_cond_eval}'
-    #                  and re.findall('sampercond\d+', alias)[0]==f'sampercond{cfg.test.n_samples_per_condition}']
-    aliases = [alias for art in coll.versions() for alias in art.aliases \
-                    if 'samples' in alias
-                    and re.search(f'steps{sampling_steps}', alias)
-                    and re.search(f'epoch{epoch}', alias)
-                    and re.search(f'cond{total_conditions}', alias)
-                    and re.search(f'sampercond{n_samples_per_condition}', alias)]
-    if len(aliases) == 0:
-        aliases = coll.versions()[0].aliases
-        for a in aliases:
-            log.info(a)
-            log.info(re.search(f'steps{sampling_steps}', a))
-            log.info(re.search(f'epoch{epoch}', a))
-            log.info(re.search(f'cond{total_conditions}', a))
-            log.info(re.search(f'sampercond{n_samples_per_condition}', a))
-            # log.info(re.findall('epoch\d+', a)[0]==f'epoch{epoch}')
-            # log.info(re.findall('cond\d+', a)[0]==f'cond{cfg.test.total_cond_eval}')
-            # log.info(re.findall('sampercond\d+', a)[0]==f'sampercond{cfg.test.n_samples_per_condition}')
-        assert False, 'No aliases found'
-    versions = [int(art.version.split('v')[-1]) for art in coll.versions()]
 
-    aliases = [a for a,v in sorted(zip(aliases, versions), key=lambda pair: pair[1], reverse=True)]
-    #log.info(f'cfg.general.wandb.sample_file_name {cfg.general.wandb.sample_file_name}\n')
-    assert len(aliases)>0, f'No aliases found for given specs.'
-    log.info(f'ordered aliases {aliases}\n')
-    log.info(f'the script will be using the newest alias: {aliases[0]}\n')
-
-    # get samples from wandb
-    savedir = os.path.join(parent_path, "experiments", "trained_models", run_id)
-    artifact_name = f"{entity}/{project}/{collection_name}:{aliases[0]}"
-    samples_art = wandb.Api().artifact(artifact_name)
-    samples_art.download(root=savedir)
-
-    # sample_file_name = f'samples_epoch{epoch}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}.txt'
-    file_path = os.path.join(savedir, aliases[0]+'.gz')
-    return file_path
-
-# 1. The run id, etc.
-@hydra.main(version_base='1.1', config_path='../configs', config_name=f'default')
-def main(cfg: DictConfig):      
-
-    # Log the current working directory
-    # log.info(os.getcwd())
-    # log.info(os.listdir())
-
-    cli_overrides = setup.capture_cli_overrides()
-
-    if cfg.general.wandb.mode=='online':
-        run, cfg = setup.setup_wandb(cfg, cli_overrides=cli_overrides, job_type='ranking')
-
-    entity = cfg.general.wandb.entity
-    project = cfg.general.wandb.project
-
-    if cfg.general.wandb.load_run_config:
-        run_config = setup.load_wandb_config(cfg)
-        cfg = setup.merge_configs(default_cfg=cfg, new_cfg=run_config, cli_overrides=cli_overrides)
-
-    cfg.general.wandb.entity = entity
-    cfg.general.wandb.project = project
-
-    set_seed(cfg.train.seed)
+@hydra.main(version_base='1.1', config_path='../configs', config_name='default')
+def main(cfg: DictConfig):
+    _run, cfg, _cli = setup_experiment(cfg, job_type='ranking', preserve_entity_project=True)
 
     epoch = cfg.general.wandb.checkpoint_epochs[0]
     sampling_steps = cfg.diffusion.diffusion_steps_eval
     num_gpus = torch.cuda.device_count()
 
     total_index, condition_start_for_job = compute_condition_range(cfg)
-    log.info(f'cfg.test.condition_first & slurm array index & total condition index {cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
-    
-    dataset_infos = setup.get_dataset(cfg=cfg, dataset_class=setup.task_to_class_and_model[cfg.general.task]['data_class'],
-                                      shuffle=cfg.dataset.shuffle, return_datamodule=False, recompute_info=False)
-    
-    model, optimizer, scheduler, scaler, start_epoch = setup.get_model_and_train_objects(cfg, model_class=setup.task_to_class_and_model[cfg.general.task]['model_class'], 
-                                                                                         model_kwargs={'dataset_infos': dataset_infos, 
-                                                                                                       'node_type_counts_unnormalized': dataset_infos.node_types_unnormalized,
-                                                                                                       'edge_type_counts_unnormalized': dataset_infos.edge_types_unnormalized,
-                                                                                                       'use_data_parallel': num_gpus>1},
-                                                                                         parent_path=parent_path, savedir=os.path.join(parent_path, 'experiments'), 
-                                                                                         load_weights_bool=False, device=device, device_count=num_gpus)
-    
-    # 4. load the weights to the model
-    savedir = os.path.join(parent_path, "checkpoints")
-    model, optimizer, scheduler, scaler, artifact_name_in_wandb = setup.load_weights_from_wandb_no_download(cfg, epoch, savedir, model, optimizer,
-                                                                                                            scheduler, scaler, device_count=num_gpus)
+    log.info(f'cfg.test.condition_first & slurm array index & total condition index '
+             f'{cfg.test.condition_first}, {cfg.test.condition_index}, {total_index}\n')
 
-    # Dataset & slice statistics
-    assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} is not a valid value.\n'
+    _, dataset_infos = build_dataloaders_and_infos(cfg, return_datamodule=False)
+    model, optimizer, scheduler, scaler, _start_epoch = build_model_and_train_objects(
+        cfg, run=None, dataset_infos=dataset_infos,
+        parent_path=parent_path,
+        savedir=os.path.join(parent_path, 'experiments'),
+        device=device, device_count=num_gpus,
+        use_data_parallel=num_gpus > 1,
+        load_weights_bool=False,
+    )
 
-    # Load the data
-    # file_path = samples_from_wandb(cfg.general.wandb.entity, cfg.general.wandb.run_id, cfg.general.wandb.project,
-    #                     sampling_steps, epoch, total_conditions, cfg.test.n_samples_per_condition)
-    # Assumes that hydra.run.dir is set to the same location as the samples
-    file_path = f"samples_epoch{epoch}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.gz"
-    # How to get to experiments/if3aizpe_sample_ts/samples_epoch??_steps??_cond??_samplercond??_s{condition_first thing from sample_array_job}.gz?
-    # just need the if3aizpe_sample_ts part. 
-    # -> or preferably actually just the corresponding .gz file here, don't download everything. 
-    # ... but then the condition_range stuff will go funny? Or will it? 
-    
-    # What is the format of file_path here? Just the one .gz file? -> Then we can replace it with another .gz file
-    # TODO: Change this such that it uses the correct stuff
-    true_graph_data, sample_graph_data = io_utils.get_samples_from_file_pyg(cfg, file_path, condition_range=None) # None means: don't do additional slicing anymore
-    log.info(f'true_graph_data.X.shape {true_graph_data.X.shape}\n')
-    log.info(f'sample_graph_data.X.shape {sample_graph_data.X.shape}\n')
-    true_graph_data = true_graph_data.mask(collapse=True)
-    sample_graph_data = sample_graph_data.mask(collapse=True)
-    # Derive actual_n_conditions from the loaded data (the file is the source of truth
-    # for how many conditions were actually sampled, which may differ from the config-based
-    # estimate due to dataset boundary effects).
-    actual_n_conditions = true_graph_data.X.shape[0] // cfg.test.n_samples_per_condition
-    condition_range = [condition_start_for_job, condition_start_for_job + actual_n_conditions]
-    log.info(f'actual_n_conditions (from data): {actual_n_conditions}\n')
-    true_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=true_graph_data.X.shape[1])
-    sample_graph_data.reshape_bs_n_samples(bs=actual_n_conditions, n_samples=cfg.test.n_samples_per_condition, n=sample_graph_data.X.shape[1])
-    
+    model, optimizer, scheduler, scaler, _artifact = load_weights_for_inference(
+        cfg, epoch, parent_path=parent_path, model=model,
+        optimizer=optimizer, scheduler=scheduler, scaler=scaler, device_count=num_gpus,
+    )
+
+    assert cfg.diffusion.edge_conditional_set in ['test', 'val', 'train'], (
+        f'cfg.diffusion.edge_conditional_set={cfg.diffusion.edge_conditional_set} '
+        f'is not a valid value.\n')
+
+    # Assumes hydra.run.dir is the same location as the samples.
+    file_path = build_samples_filepath(
+        cfg, epoch=epoch, sampling_steps=sampling_steps,
+        condition_start_for_job=condition_start_for_job,
+    )
+
     # NOTE: keep dense_data/final_samples on CPU here. evaluate_from_artifact slices
     # them per condition and moves only the slice to `device`, so the full (bs*n_samples)
     # tensors never need to live on the GPU.
-    scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print = model.evaluate_from_artifact(dense_data=true_graph_data, final_samples=sample_graph_data, device=device, condition_range=condition_range, epoch=epoch)
-    for i in range(len(placeholders_for_print)):
-        original_data_placeholder = placeholders_for_print[i]
-        elbo_sorted_reactions = all_elbo_sorted_reactions[i]
-        weighted_prob_sorted_rxns = all_weighted_prob_sorted_rxns[i]
-        true_rcts, true_prods = mol.get_cano_list_smiles(X=original_data_placeholder.X, E=original_data_placeholder.E, atom_types=model.dataset_info.atom_decoder, 
-                                                         bond_types=model.dataset_info.bond_decoder, plot_dummy_nodes=cfg.test.plot_dummy_nodes)
-        graph.save_samples_to_file_without_weighted_prob(f'eval_epoch{epoch}_steps{sampling_steps}_s{condition_start_for_job}.txt', i, elbo_sorted_reactions, true_rcts, true_prods)
-        graph.save_samples_to_file(f'eval_epoch{epoch}_steps{sampling_steps}_resorted_{cfg.test.sort_lambda_value}_s{condition_start_for_job}.txt', i, weighted_prob_sorted_rxns, true_rcts, true_prods)
+    true_graph_data, sample_graph_data, _actual_n, condition_range = load_and_reshape_samples(
+        cfg, file_path, condition_start_for_job=condition_start_for_job,
+    )
 
-    # print(f'scores {scores}\n')
-    print(f'scores {len(scores)}\n')
-    print(f'scores[0] {scores[0]}\n')
-    
-    for score in scores:
-        for key, value in score.items():
-            if isinstance(value, torch.Tensor):
-                score[key] = value.detach().cpu().numpy()
-    # log.info(scores)
-    
-    pickle.dump(scores, open(f'scores_epoch{epoch}_steps{sampling_steps}_cond{cfg.test.n_conditions}_sampercond{cfg.test.n_samples_per_condition}_s{condition_start_for_job}.pickle', 'wb'))
+    scores, all_elbo_sorted_reactions, all_weighted_prob_sorted_rxns, placeholders_for_print = \
+        model.evaluate_from_artifact(
+            dense_data=true_graph_data, final_samples=sample_graph_data, device=device,
+            condition_range=condition_range, epoch=epoch,
+        )
+
+    write_evaluation_outputs(
+        cfg, model,
+        placeholders_for_print=placeholders_for_print,
+        all_elbo_sorted_reactions=all_elbo_sorted_reactions,
+        all_weighted_prob_sorted_rxns=all_weighted_prob_sorted_rxns,
+        epoch=epoch, sampling_steps=sampling_steps,
+        condition_start_for_job=condition_start_for_job,
+    )
+
+    dump_scores_pickle(
+        cfg, scores, epoch=epoch, sampling_steps=sampling_steps,
+        condition_start_for_job=condition_start_for_job,
+    )
+
 
 if __name__ == "__main__":
-    # main()
     try:
-        # save_default_config()
         main()
     except Exception as e:
         log.exception("main crashed. Error: %s", e)
