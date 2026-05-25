@@ -214,18 +214,40 @@ def _set_atom_map_from_dense(mol_obj, rdkit_to_dense, am_numbers):
             mol_obj.GetAtomWithIdx(rdkit_idx).SetAtomMapNum(am)
 
 
+def _build_mapped_rxn(mol_infos, am_numbers):
+    """Build an atom-mapped reaction SMILES ``reactants>>product`` from mol_infos.
+
+    Sets each atom's map number to the dense graph's atom_map_number so that
+    corresponding reactant/product atoms share a label. Returns '' if the
+    mapping is unavailable or any molecule fails to parse.
+    """
+    if am_numbers is None or len(mol_infos) < 2:
+        return ''
+    parts = []
+    for mi in mol_infos:
+        m = Chem.MolFromSmiles(mi['smiles'])
+        if m is None:
+            return ''
+        _set_atom_map_from_dense(m, mi['atom_map'], am_numbers)
+        parts.append(Chem.MolToSmiles(m))
+    return '.'.join(parts[:-1]) + '>>' + parts[-1]
+
+
 def _transfer_stereo_to_reactant(rct_smiles, gen_prod_smiles, orig_product_mol, am_numbers, mol_infos):
     """Transfer stereochemistry from the original product to a generated reactant.
 
     Processes each reactant molecule individually to avoid atom-reordering issues
     when parsing dot-separated SMILES.
 
-    Returns the stereo-corrected reactant SMILES, or the original if transfer fails.
+    Returns ``(corrected_precursors, mapped_rxn)`` where *corrected_precursors* is
+    the stereo-corrected reactant SMILES (no atom mapping) and *mapped_rxn* is the
+    stereo-corrected, atom-mapped reaction SMILES ``reactants>>product``. On failure
+    returns ``(rct_smiles, '')`` so the caller falls back to the unmapped reaction.
     """
     try:
         gen_prod_mol = Chem.MolFromSmiles(gen_prod_smiles)
         if gen_prod_mol is None:
-            return rct_smiles
+            return rct_smiles, ''
 
         prod_info = mol_infos[-1]
         _set_atom_map_from_dense(gen_prod_mol, prod_info['atom_map'], am_numbers)
@@ -241,10 +263,12 @@ def _transfer_stereo_to_reactant(rct_smiles, gen_prod_smiles, orig_product_mol, 
         prod_side_ams = set(a.GetAtomMapNum() for a in gen_prod_mol.GetAtoms())
 
         corrected_parts = []
+        mapped_parts = []
         for mi in rct_infos:
             rct_mol = Chem.MolFromSmiles(mi['smiles'])
             if rct_mol is None:
                 corrected_parts.append(mi['smiles'])
+                mapped_parts.append(mi['smiles'])
                 continue
 
             _set_atom_map_from_dense(rct_mol, mi['atom_map'], am_numbers)
@@ -259,12 +283,14 @@ def _transfer_stereo_to_reactant(rct_smiles, gen_prod_smiles, orig_product_mol, 
             if has_cistrans:
                 rct_mol = transfer_bond_dir_from_product_to_reactant(rct_mol, orig_prod_copy)
 
+            mapped_parts.append(Chem.MolToSmiles(rct_mol, canonical=True))
             remove_atom_mapping_from_mol(rct_mol)
             corrected_parts.append(Chem.MolToSmiles(rct_mol, canonical=True))
 
-        return '.'.join(corrected_parts)
+        mapped_rxn = '.'.join(mapped_parts) + '>>' + Chem.MolToSmiles(orig_prod_copy)
+        return '.'.join(corrected_parts), mapped_rxn
     except Exception:
-        return rct_smiles
+        return rct_smiles, ''
 
 
 def _decode_samples(final_samples, cfg, product_smiles=None):
@@ -309,12 +335,18 @@ def _decode_samples(final_samples, cfg, product_smiles=None):
         mol_infos = all_atom_mappings[sample_idx]
         reactant_mol_infos = mol_infos[:-1] if len(mol_infos) > 1 else mol_infos
 
+        mapped_rxn = _build_mapped_rxn(
+            mol_infos, am_numbers[sample_idx] if am_numbers is not None else None
+        )
+
         if has_stereo and am_numbers is not None:
             gen_prod = all_rxn_str[sample_idx].split('>>')[-1] if '>>' in all_rxn_str[sample_idx] else ''
-            precursors = _transfer_stereo_to_reactant(
+            precursors, stereo_mapped_rxn = _transfer_stereo_to_reactant(
                 precursors, gen_prod, orig_product_mol,
                 am_numbers[sample_idx], mol_infos,
             )
+            if stereo_mapped_rxn:
+                mapped_rxn = stereo_mapped_rxn
 
         results.append({
             'precursors': precursors,
@@ -324,6 +356,7 @@ def _decode_samples(final_samples, cfg, product_smiles=None):
                 {'smiles': mi['smiles'], 'atom_map': {str(k): v for k, v in mi['atom_map'].items()}}
                 for mi in reactant_mol_infos
             ],
+            'mapped_rxn': mapped_rxn,
         })
 
     results.sort(key=lambda x: x['score'], reverse=True)
