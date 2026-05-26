@@ -130,7 +130,7 @@ class SinusoidalPosEmb(torch.nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-def laplacian_eigenvectors_scipy(E, k):
+def laplacian_eigenvectors_scipy(E, k, random_sign=True):
     """
     Computes the eigenvectors of the Laplacian matrix of a graph.
 
@@ -152,25 +152,28 @@ def laplacian_eigenvectors_scipy(E, k):
         normalization='sym',
         num_nodes=num_nodes
     )
-    
+
     L = to_scipy_sparse_matrix(L_edge_index, L_edge_weight, num_nodes)
 
-    eig_vals, eig_vecs = eigsh(
-        L,
-        k=k+1,
-        which='SA',
-        return_eigenvectors=True,
-        ncv=min(E.shape[0], max(20*k + 1, 40))
-    )
+    # Dense, direct symmetric eigendecomposition instead of sparse ARPACK (`eigsh`).
+    # ARPACK is an iterative solver whose eigenvector sign/basis is not reproducible
+    # run-to-run for molecular Laplacians (degenerate eigenvalues from molecular
+    # symmetry), and its random start vector is untied to any seed — that was the
+    # dominant inference nondeterminism. `eigh` (LAPACK) is a direct method and is
+    # deterministic for a given input. Molecule graphs are tiny, so dense is cheap.
+    L_dense = np.asarray(L.todense(), dtype=np.float64)
+    eig_vals, eig_vecs = np.linalg.eigh(L_dense)          # ascending eigenvalues
+    eig_vecs = eig_vecs[:, eig_vals.argsort()]            # eigh already sorts; keep explicit
+    pe = torch.from_numpy(eig_vecs[:, 1:k + 1]).float()
 
-    eig_vecs = np.real(eig_vecs[:, eig_vals.argsort()])
-    pe = torch.from_numpy(eig_vecs[:, 1:k + 1])
-    # pe = torch.from_numpy(eig_vecs)
-    sign = -1 + 2 * torch.randint(0, 2, (k, ))
-    pe *= sign
+    # Random sign flip is a train-time augmentation for eigenvector sign-invariance.
+    # At inference it only injects nondeterminism, so skip it.
+    if random_sign:
+        sign = -1 + 2 * torch.randint(0, 2, (pe.shape[-1], ))
+        pe *= sign
     return pe
 
-def laplacian_eigenvectors_gpu(E, k):
+def laplacian_eigenvectors_gpu(E, k, random_sign=True):
     """
     Computes the eigenvectors of the Laplacian matrix of a graph using PyTorch and CUDA.
 
@@ -204,9 +207,10 @@ def laplacian_eigenvectors_gpu(E, k):
     sorted_indices = torch.argsort(eig_vals)
     pe = eig_vecs[:, sorted_indices[1:k + 1]]
 
-    # Apply random sign flipping
-    sign = -1 + 2 * torch.randint(0, 2, (k, ), device=E.device)
-    pe *= sign
+    # Apply random sign flipping (train-time augmentation only; see scipy variant).
+    if random_sign:
+        sign = -1 + 2 * torch.randint(0, 2, (k, ), device=E.device)
+        pe *= sign
 
     return pe
 
@@ -252,7 +256,7 @@ class PositionalEmbedding(nn.Module):
                 # ... what we could do is to just get whatever we get from this and then pad it to the correct dimensionality (with zeros or something)
                 # ... or should we have a fixed dimensionality? -> this is tricky since some are really small, let's try padding
                 k = min(max_eigenvectors, (product_indices[i] == molecule_assignments[i]).sum().item())
-                pe = laplacian_eigenvectors_scipy(E[i], k) # Shape (bs, n, k)
+                pe = laplacian_eigenvectors_scipy(E[i], k, random_sign=self.training) # Shape (bs, n, k)
                 pe = torch.cat([pe, torch.zeros((n, self.dim - k), dtype=torch.float32, device=pe.device)], dim=-1)
                 
                 # Create a mapping from atom map number to the interesting positional encodings (zero pos enc for non-atom mapped atoms)
@@ -298,7 +302,7 @@ class PositionalEmbedding(nn.Module):
                 E[i, product_indices[i] == molecule_assignments[i], :] = 0
                 E[i, :, 0 == molecule_assignments[i]] = 0
             
-            pe = laplacian_eigenvectors_scipy(E, self.dim) # Shape (bs, n, k)
+            pe = laplacian_eigenvectors_scipy(E, self.dim, random_sign=self.training) # Shape (bs, n, k)
 
             pos_embeddings = torch.zeros((bs, n, self.dim), dtype=torch.float32, device=E.device)
             for i in range(bs):
@@ -349,7 +353,7 @@ class PositionalEmbedding(nn.Module):
                 # ... what we could do is to just get whatever we get from this and then pad it to the correct dimensionality (with zeros or something)
                 # ... or should we have a fixed dimensionality? -> this is tricky since some are really small, let's try padding
                 k = min(max_eigenvectors, (product_indices[i] == molecule_assignments[i]).sum().item())
-                pe = laplacian_eigenvectors_gpu(E[i], k) # Shape (bs, n, k) <- can this be made faster by only calculating for the product?
+                pe = laplacian_eigenvectors_gpu(E[i], k, random_sign=self.training) # Shape (bs, n, k) <- can this be made faster by only calculating for the product?
                 pe = torch.cat([pe, torch.zeros((n, self.dim - k), dtype=torch.float32, device=pe.device)], dim=-1)
                 
                 # Create a mapping from atom map number to the interesting positional encodings (zero pos enc for non-atom mapped atoms)
