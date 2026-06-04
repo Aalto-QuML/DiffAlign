@@ -550,38 +550,21 @@ def predict_with_inpainting(
 
         # An atom counts as "changed" if its type differs OR any of its bonds do.
         diff_per_atom = atom_diff | bond_diff
-        # Strict constraint: every selected change-atom must differ.
-        changed_per_sample = diff_per_atom.all(dim=1)          # (n_samples,)
-        changed_per_atom = diff_per_atom.any(dim=0)            # (|change|,)
-
-        n_kept = int(changed_per_sample.sum())
+        n_changed_per_sample = diff_per_atom.sum(dim=1)        # (n_samples,)
+        n_change_atoms = int(diff_per_atom.shape[1])
+        n_fully = int((n_changed_per_sample == n_change_atoms).sum())
         log.info(
-            f"Inpainting constraint: {n_kept}/{n_samples_actual} samples "
-            f"changed every selected atom (type or bond)."
+            f"Inpainting: {n_fully}/{n_samples_actual} samples changed EVERY selected "
+            f"atom; max changed in any sample = {int(n_changed_per_sample.max())}/"
+            f"{n_change_atoms}. NOT gating — surfacing all samples (collapse is "
+            f"expected and shown, not hidden)."
         )
-
-        if n_kept == 0:
-            # stuck = atoms that stayed unchanged in every sample
-            stuck_positions = [
-                change_idx_list[i] for i in range(len(change_idx_list))
-                if not bool(changed_per_atom[i])
-            ]
-            stuck_atoms = [
-                {'index': pos, 'element': atom_decoder[int(orig_X_collapsed[pos])]}
-                for pos in stuck_positions
-            ]
-            requested_change_atoms = [
-                {'index': pos, 'element': atom_decoder[int(orig_X_collapsed[pos])]}
-                for pos in change_idx_list
-            ]
-            failure_info = {
-                'n_samples': n_samples_actual,
-                'requested_change_atoms': requested_change_atoms,
-                'stuck_atoms': stuck_atoms,
-            }
-            return [], failure_info
-
-        filtered_samples = final_samples.select_subset(changed_per_sample)
+        # Deliberately do NOT gate on "all change-atoms differ". Show every sample,
+        # ranked most-changed-first, so a genuinely-steered sample (if any) surfaces
+        # first while collapsed/near-identical samples are still displayed — honest
+        # about inpainting often regenerating the original.
+        order = torch.argsort(n_changed_per_sample, descending=True, stable=True)
+        filtered_samples = final_samples.select_subset(order)
 
     results = _decode_samples(filtered_samples, cfg, product_smiles=product_smiles)
     return results[:n_precursors], None
